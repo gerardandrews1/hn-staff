@@ -23,8 +23,8 @@ class SentryConfig:
 @dataclass
 class AppConfig:
     roomboss: RoombossConfig
-    database: DatabaseConfig
-    sentry: SentryConfig
+    # database: DatabaseConfig
+    # sentry: SentryConfig
     
     @classmethod
     def from_secrets(cls) -> 'AppConfig':
@@ -34,17 +34,17 @@ class AppConfig:
                 api_url=st.secrets["roomboss"]["api_url"],
                 api_key=st.secrets["roomboss"]["api_key"]
             ),
-            database=DatabaseConfig(
-                host=st.secrets["staff_portal_db"]["host"],
-                port=st.secrets["staff_portal_db"]["port"],
-                database=st.secrets["staff_portal_db"]["database"],
-                user=st.secrets["staff_portal_db"]["user"],
-                password=st.secrets["staff_portal_db"]["password"]
-            ),
-            sentry=SentryConfig(
-                dsn=st.secrets["sentry"]["dsn"],
-                environment=st.secrets["sentry"]["environment"]
-            )
+            # database=DatabaseConfig(
+            #     host=st.secrets["staff_portal_db"]["host"],
+            #     port=st.secrets["staff_portal_db"]["port"],
+            #     database=st.secrets["staff_portal_db"]["database"],
+            #     user=st.secrets["staff_portal_db"]["user"],
+            #     password=st.secrets["staff_portal_db"]["password"]
+            # ),
+            # sentry=SentryConfig(
+            #     dsn=st.secrets["sentry"]["dsn"],
+            #     environment=st.secrets["sentry"]["environment"]
+            # )
         )
 
 # App Settings
