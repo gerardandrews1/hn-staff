@@ -3,6 +3,14 @@ venv/
 env/
 ENV/
 
+# .gitignore
+.streamlit/secrets.toml
+__pycache__/
+*.pyc
+.env
+.idea/
+.vscode/
+
 # Python
 __pycache__/
 *.py[cod]

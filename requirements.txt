@@ -6,3 +6,4 @@ pandas>=2.2.0
 numpy>=1.26.0
 python-dateutil>=2.8.2
 pytz>=2024.1
+ratelimit==2.2.1

@@ -5,6 +5,7 @@ from typing import Optional
 @dataclass
 class RoombossConfig:
     api_url: str
+    api_id: str
     api_key: str
 
 @dataclass
@@ -32,6 +33,7 @@ class AppConfig:
         return cls(
             roomboss=RoombossConfig(
                 api_url=st.secrets["roomboss"]["api_url"],
+                api_id=st.secrets["roomboss"]["api_id"],
                 api_key=st.secrets["roomboss"]["api_key"]
             ),
             # database=DatabaseConfig(
