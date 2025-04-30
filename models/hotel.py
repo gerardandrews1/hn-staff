@@ -22,8 +22,10 @@ class RbAvailableHotel:
         487111: "WOW Standard",
         493448: "Aya Standard",
         479226: "H2 Standard",
-        459248: "VN standard",
+        459248: "VN Standard",
         459290: "VN AP",
+        499296: "VN Winter Discount",
+        499872: "VN Flexible 30 days",
         457905: "HN standard",
         444942: "HN OTA",
         444506: "Chat standard",
@@ -40,7 +42,8 @@ class RbAvailableHotel:
         511129: "HN Standard",   # Add proper name
         504401: "H2 Standard",
         506333: "MnK Promotion",
-        502176: "Standard"
+        502176: "Standard",
+        501853: "WOW Winter"
 
     }
 

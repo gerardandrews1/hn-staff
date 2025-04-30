@@ -369,7 +369,7 @@ def handle_sidebar_inputs():
                 exclude_rate_plans = st.multiselect(
                     "Exclude rate plans",
                     options=unique_rate_plans,
-                    default="HN Early Bird",
+                    # default="HN Early Bird",
                     help="Select rate plans to exclude from results"
                 )
                 # Remove "-None" from the list if it's the only item

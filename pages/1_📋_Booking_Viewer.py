@@ -1,390 +1,369 @@
-import os
-import sys
-from pathlib import Path
+# pages/booking_viewer.py
+
 import streamlit as st
-import pandas as pd
+import json
 import datetime
-from typing import Dict, Any
+import pandas as pd
 
-# Add root directory to path
-current_dir = Path(__file__).parent.parent
-sys.path.insert(0, str(current_dir))
+from models.booking import Booking
+from services.api_list_booking import call_api
 
-from config import AppConfig, APP_SETTINGS
-from services.roomboss import RoombossService
+# Set page config
+st.set_page_config(
+    page_title="Booking Viewer",
+    page_icon="📋",
+    layout="wide"
+)
 
-# Initialize
-st.set_page_config(page_title="Booking Viewer", page_icon="🔍", layout="wide")
-config = AppConfig.from_secrets()
-roomboss = RoombossService(config)
+def write_links_box():
+    """Writes the expandable links box with useful reference links"""
+    wine_dine_link = "https://www.winedineniseko.com/"
+    rhythm_referral_link = "https://book.rhythmjapan.com/public/booking/order02.jsf?mv=1&vs=rhythmniseko&segment=HolidayNiseko"
+    gsg_link = "https://holidayniseko.com/sites/default/files/services/2024-08/Holiday%20Niseko%20Guest%20Service%20Guide%202024_2025.pdf"
 
-def write_key_booking_info(booking_data: Dict[str, Any]) -> None:
-    """Writes key booking information in the sidebar"""
-    # Get vendor and booking info with fallbacks
-    vendor = booking_data.get('order', {}).get('bookings', [{}])[0].get('hotel', {}).get('hotelName', 'Unknown Property')
-    eid = booking_data.get('order', {}).get('bookings', [{}])[0].get('eId', 'Unknown')
-    booking_id = booking_data.get('order', {}).get('bookings', [{}])[0].get('bookingId', 'Unknown')
-    
-    # Get guest info
-    lead_guest = booking_data.get('order', {}).get('leadGuest', {})
-    guest_name = f"{lead_guest.get('givenName', '')} {lead_guest.get('familyName', '')}"
-    guest_email = lead_guest.get('email', '')
-    guest_phone = lead_guest.get('phoneNumber', '')
-    
-    # Get booking status
-    booking_status = booking_data.get('order', {}).get('bookings', [{}])[0].get('active', False)
-    created_date = booking_data.get('order', {}).get('bookings', [{}])[0].get('createdDate', '')
-    if created_date:
-        created_date = pd.to_datetime(created_date).strftime('%d-%b-%Y')
+    with st.container():
+        links_expander = st.expander("Links", expanded=False)
+        with links_expander:
+            st.markdown(f"[Niseko Wine and Dine link]({wine_dine_link})")
+            st.markdown(f"[Rhythm referral link]({rhythm_referral_link})")
+            st.markdown(f"[Guest Service Guide link]({gsg_link})")
 
-    # Display information
-    st.markdown(f"##### {vendor} #{eid}")
-    st.markdown(f"###### {guest_name}")
-    if created_date:
-        st.write(f"Created - {created_date}")
-    
-    # Management and status
-    managed_by = get_management_company(vendor)
-    if managed_by == 'Holiday Niseko':
-        st.write("**:green[Managed by Holiday Niseko]**")
-    else:
-        st.write(f"**:red[Managed by {managed_by}]**")
-    
-    if booking_status:
-        st.write("**:green[Booking is Active]**")
-    else:
-        st.write(":red[Booking is Cancelled]")
-    
-    # RoomBoss link
-    rboss_link = f"https://app.roomboss.com/ui/booking/edit.jsf?bid={booking_id}"
-    st.markdown(f"[Open #{eid} in RoomBoss]({rboss_link})")
-    
-    # Contact info
-    if guest_phone:
-        st.write(":telephone_receiver:", guest_phone)
-    
-    # Email handling
-    if guest_email:
-        if "booking.com" not in guest_email:
-            st.write(f":email: {guest_email}")
-            st.write("---")
-            
-            # Payment and services links
-            if eid and guest_email:
-                payment_link = f"https://holidayniseko.evoke.jp/public/yourbooking.jsf?id={eid}&em={guest_email}"
-                gsg_link = f"https://holidayniseko2.evoke.jp/public/booking/order02.jsf?mv=1&vs=WinterGuestServices&bookingEid={eid}"
-                
-                st.markdown(f"[View booking details and make payments here]({payment_link})")
-                st.markdown(f"[Book your guest services here]({gsg_link})")
-        else:
-            st.write(":red[Need to get guest email]")
-            st.write("---")
-
-def get_management_company(vendor: str) -> str:
-    """Determine management company based on vendor/property name"""
-    # This should be moved to a configuration file or database
-    hn_props = ["Property1", "Property2"]  # Add actual HN properties
-    vn_props = ["VNProperty1", "VNProperty2"]  # Add actual VN properties
-    
-    if vendor in hn_props:
-        return "Holiday Niseko"
-    elif vendor in vn_props:
-        return "Vacation Niseko"
-    else:
-        return "Other Management"
-
-# [Previous imports and setup code remains the same...]
-
-
-def write_room_info(booking_data: Dict[str, Any]) -> None:
-    """Display room information in a formatted table"""
-    # Add custom CSS for the new table style
-    st.markdown("""
+def apply_custom_styles():
+    """Apply custom CSS styling to the page"""
+    st.markdown(
+        """
         <style>
-        .table-wrapper {
-            width: 350px;
-            border: 1px solid #e0e0e0;
-            border-top: 4px solid #0C8C3C;
-            background: white;
-            padding: 0;
-            margin: 0;
+        footer {display: none}
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
         }
-
-        table {
+        .stButton button {
             width: 100%;
-            border-collapse: collapse;
-            font-size: 14px;
-        }
-
-        .header-row {
-            background: white;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        .header-cell {
-            padding: 15px;
-            color: #333;
-        }
-
-        .header-title {
-            font-size: 16px;
-            font-weight: 500;
-            margin: 0 0 5px 0;
-        }
-
-        .booking-id {
-            color: #666;
-            font-size: 14px;
-            margin: 0 0 10px 0;
-        }
-
-        .login-button {
-            display: inline-block;
-            background-color: #FFB800;
-            color: #000000;
-            padding: 6px 12px;
-            text-decoration: none;
-            border-radius: 4px;
-            font-weight: 600;
-            font-size: 13px;
-        }
-
-        th, td {
-            padding: 10px;
-            text-align: left;
-            border: 1px solid #e0e0e0;
-        }
-
-        th {
-            width: 100px;
-            font-weight: 500;
-            color: #333;
-            background: white;
-        }
-
-        td {
-            background: white;
+            white-space: pre-wrap !important;
         }
         </style>
-    """, unsafe_allow_html=True)
+        """, 
+        unsafe_allow_html=True
+    )
 
-    # [Rest of the function remains the same]
-
-    # Get room data
-    for booking in booking_data.get('order', {}).get('bookings', []):
-        if booking.get('bookingType') == 'ACCOMMODATION':
-            for room in booking.get('items', []):
-                # Get room details
-                property_name = booking.get('hotel', {}).get('hotelName', '')
-                room_name = room.get('roomType', {}).get('roomTypeName', '')
-                check_in = room.get('checkIn', '').replace('-', '/')
-                check_out = room.get('checkOut', '').replace('-', '/')
-                nights = (pd.to_datetime(check_out) - pd.to_datetime(check_in)).days
-                guests = room.get('numberGuests', 0)
-                rate = f"¥{room.get('priceRetail', 0):,.0f}"
-                eid = booking.get('eId', '')
-
-                # Create HTML table with header as part of the table
-                table_html = f"""
-                <table class="table-wrapper">
-                    <tr class="header-row">
-                        <td colspan="2" class="header-cell">
-                            <div class="header-title">Booking Details</div>
-                            <div class="booking-id">Booking ID: {eid}</div>
-                            <a href="https://holidayniseko.com/my-booking" class="login-button">Login to MyBooking</a>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Property</th>
-                        <td>{property_name}</td>
-                    </tr>
-                    <tr>
-                        <th>Room</th>
-                        <td>{room_name}</td>
-                    </tr>
-                    <tr>
-                        <th>Check-in</th>
-                        <td>{check_in}</td>
-                    </tr>
-                    <tr>
-                        <th>Check-out</th>
-                        <td>{check_out}</td>
-                    </tr>
-                    <tr>
-                        <th>Nights</th>
-                        <td>{nights}</td>
-                    </tr>
-                    <tr>
-                        <th>Guests</th>
-                        <td>{guests}</td>
-                    </tr>
-                    <tr>
-                        <th>Rate</th>
-                        <td>{rate}</td>
-                    </tr>
-                </table>
-                """
-                st.markdown(table_html, unsafe_allow_html=True)
-
-
-def write_payment_info(booking_data: Dict[str, Any]) -> None:
-    """Display payment information in an expandable section"""
-    payment_data = booking_data.get('order', {}).get('invoicePayments', [])
+def fetch_booking_data(booking_id):
+    """
+    Call the API and return the booking data
     
-    if payment_data:
-        payment_list = []
-        for payment in payment_data:
-            payment_info = {
-                "Invoice": payment.get('invoiceNumber', ''),
-                "Created": pd.to_datetime(payment.get('invoiceDate', '')),
-                "Invoiced": payment.get('invoiceAmount', 0),
-                "Due": pd.to_datetime(payment.get('invoiceDueDate', '')),
-                "Paid": payment.get('paymentAmount', 0),
-                "Date Paid": pd.to_datetime(payment.get('paymentDate')) if payment.get('paymentDate') else pd.NaT
-            }
-            payment_list.append(payment_info)
+    Args:
+        booking_id: The booking ID to fetch
+    
+    Returns:
+        Booking object or None if API call failed
+    """
+    try:
+        # Ensure booking_id is stripped of whitespace
+        booking_id = booking_id.strip()
         
-        if payment_list:
-            df = pd.DataFrame(payment_list)
-            st.markdown("###### Invoices and Payments")
-            st.markdown(
-                df.style.hide(axis="index")
-                .format({
-                    "Created": lambda x: x.strftime("%d %b %Y"),
-                    "Due": lambda x: x.strftime("%d %b %Y"),
-                    "Date Paid": lambda x: x.strftime("%d %b %Y") if pd.notnull(x) else '',
-                    "Invoiced": "¥{:,.0f}",
-                    "Paid": "¥{:,.0f}"
-                })
-                .set_table_styles([{
-                    'selector': 'th',
-                    'props': [('font-size', '10pt'), ('text-align', 'center')]
-                }])
-                .set_properties(**{
-                    'font-size': '8pt',
-                    'text-align': 'center'
-                }).to_html(),
-                unsafe_allow_html=True
-            )
-
-def write_days_to_checkin(booking_data: Dict[str, Any]) -> None:
-    """Display countdown to check-in or check-out"""
-    # Get check-in and check-out dates from first accommodation booking
-    for booking in booking_data.get('order', {}).get('bookings', []):
-        if booking.get('bookingType') == 'ACCOMMODATION':
-            for room in booking.get('items', []):
-                checkin = room.get('checkIn')
-                checkout = room.get('checkOut')
-                if checkin and checkout:
-                    date_checkin = pd.to_datetime(checkin).normalize()
-                    date_checkout = pd.to_datetime(checkout).normalize()
-                    today = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                    
-                    days_to_checkin = (date_checkin - today).days
-                    days_after_checkout = (date_checkout - today).days
-                    
-                    if days_to_checkin > 0:
-                        st.write(f"{days_to_checkin} days until check-in")
-                    elif days_to_checkin == 0:
-                        st.write("Check-in is today")
-                    else:
-                        if days_after_checkout < 0:
-                            st.write(f"Checked out {abs(days_after_checkout)} days ago")
-                        elif days_after_checkout == 0:
-                            st.write("Check-out is today!")
-                        else:
-                            st.write(f"Currently staying: {days_after_checkout+1} days until check-out")
-                    break
-            break
-
-def write_notes(booking_data: Dict[str, Any]) -> None:
-    """Display booking notes if they exist"""
-    notes = booking_data.get('order', {}).get('bookings', [{}])[0].get('notes')
-    if notes:
-        st.markdown("##### Notes")
-        st.markdown(notes)
-
-def main():
-    st.title("Booking Viewer")
-    
-    # Get configuration from secrets
-    gs_api_config = {
-        'base_url': st.secrets["gs_api"]["base_url"],
-        'api_id': st.secrets["gs_api"]["api_id"],
-        'api_key': st.secrets["gs_api"]["api_key"],
-    }
-    
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        booking_id = st.text_input(
-            "Enter Booking ID",
-            max_chars=7,
-            placeholder="1234567"
-        )
-    with col2:
-        search = st.button("🔍 Search", use_container_width=True)
-
-    if booking_id and search:
         with st.spinner("Fetching booking details..."):
-            # First get basic booking info
-            booking_data = roomboss.get_booking(booking_id)
+            response = call_api(
+                booking_id,
+                st.secrets["roomboss"]["api_id"],
+                st.secrets["roomboss"]["api_key"]
+            )
+        
+        if response.ok:
+            booking = Booking(json.loads(response.text), api_type="listBooking")
             
-            if booking_data:
-                # Get the full booking ID
-                full_booking_id = booking_data.get('order', {}).get('bookings', [{}])[0].get('bookingId')
+            # Update the property name and guest name in recent bookings if this is a valid booking
+            if "recent_bookings" in st.session_state:
+                # Convert any string IDs to tuples first
+                recent_bookings_updated = []
+                for item in st.session_state.recent_bookings:
+                    if isinstance(item, tuple):
+                        if len(item) == 2:
+                            # Old format (id, property_name)
+                            id_val, prop_name = item
+                            recent_bookings_updated.append((id_val.strip(), prop_name, ""))
+                        elif len(item) == 3:
+                            # New format (id, property_name, guest_name)
+                            recent_bookings_updated.append(item)
+                        else:
+                            # Unexpected format, create new tuple with defaults
+                            recent_bookings_updated.append((str(item[0]).strip(), "", ""))
+                    else:
+                        # If it's just a string ID, convert to tuple with empty property and guest names
+                        recent_bookings_updated.append((item.strip(), "", ""))
                 
-                # Get additional package details if needed
-                package_details = None
-                if full_booking_id:
-                    package_details = get_package_details(
-                        base_url=gs_api_config['base_url'],
-                        api_id=gs_api_config['api_id'],
-                        api_key=gs_api_config['api_key'],
-                        booking_id=full_booking_id
-                    )
+                st.session_state.recent_bookings = recent_bookings_updated
                 
-                # Create two-column layout
-                left_col, right_col = st.columns([1, 2])
+                # Find the index of the current booking ID
+                for i, (id, prop_name, _) in enumerate(st.session_state.recent_bookings):
+                    if id.strip() == booking_id.strip():
+                        # Get property name - use vendor or a fallback property
+                        property_name = getattr(booking, 'vendor', '') or getattr(booking, 'property_name', '')
+                        
+                        # Get guest name from the booking - specific to your data structure
+                        guest_name = ""
+                        
+                        # Based on the debug output, we know these attributes are available
+                        if hasattr(booking, 'full_name') and booking.full_name:
+                            guest_name = booking.full_name
+                        elif hasattr(booking, 'given_name') and hasattr(booking, 'family_name'):
+                            if booking.given_name and booking.family_name:
+                                guest_name = f"{booking.given_name} {booking.family_name}"
+                            elif booking.given_name:
+                                guest_name = booking.given_name
+                            elif booking.family_name:
+                                guest_name = booking.family_name
+                        
+                        # Update the tuple with the new property name and guest name
+                        if guest_name:
+                            st.session_state.recent_bookings[i] = (id, property_name, guest_name)
+                        else:
+                            st.session_state.recent_bookings[i] = (id, property_name, "")
+                        
+                        break
+                        
+            return booking
+        else:
+            st.error(f"Error fetching booking: {response.status_code} - {response.reason}")
+            return None
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+        return None
+
+def display_booking_details(booking):
+    """Display booking details in a three-column layout"""
+    # Process room data first without displaying (just to set variables)
+    # We'll use a separate function to avoid duplicate displays
+    process_room_data(booking)
+    
+    # Create three columns
+    left_col, middle_col, right_col = st.columns([2, 2, 2])
+    
+    # Display booking info in left column
+    with left_col:
+        with st.container(border=True):
+            booking.write_key_booking_info()
+            booking.write_notes()
+    
+    # Display email subject and room info in middle column
+    with middle_col:
+        # Email subject at the top
+        st.markdown("##### Email Subject")
+        st.markdown(booking.email_subject_line)
+        
+        # Room information
+        # st.markdown("##### Room Information")
+        booking.write_room_info(booking.room_list_todf)  
+    
+    # Display check-in info in right column
+    with right_col:
+        with st.container():
+            booking.write_payment_df()
+    
+    # Add divider before email templates section
+    st.write("---")
+    
+    # Create lower section for email templates
+    email_col, spacer_col = st.columns([4, 1])
+    
+    # Display email templates
+    with email_col:
+        st.write("Emails")
+        with st.container():
+            # Create tabs for different email templates
+            email_tabs = st.tabs([
+                "Booking Confirmation", 
+                "Guest Services", 
+                "OTA Emails", 
+                "Payment"
+            ])
+            
+            with email_tabs[0]:  # Booking Confirmation
+                booking.write_booking_confirmation()
+            
+            with email_tabs[1]:  # Guest Services
+                booking.write_gsg_upsell()
+            
+            with email_tabs[2]:  # OTA Emails
+                booking.write_first_ota_email()
+                booking.write_second_OTA_email()
+                booking.write_OTA_email()
+            
+            with email_tabs[3]:  # Payment
+                booking.write_invoice_sentences()
+                booking.write_overdue_email()
+
+def process_room_data(booking):
+    """Process room data to set necessary attributes without displaying"""
+    if not booking.room_list_todf or len(booking.room_list_todf) == 0:
+        return
+        
+    # Track check-in and check-out dates
+    all_checkins = []
+    all_checkouts = []
+    
+    # Process each room
+    for room in booking.room_list_todf:
+        all_checkins.append(room[2])  # Check-in is third item
+        all_checkouts.append(room[3])  # Check-out is fourth item
+    
+    # Set min check-in and max check-out dates
+    if all_checkins:
+        booking.accom_checkin = min(all_checkins)
+    if all_checkouts:
+        booking.accom_checkout = max(all_checkouts)
+    
+    # Generate email subject line
+    booking.email_subject_line = (
+        f"{booking.vendor} Booking #{booking.eId} ~ "
+        f"{booking.accom_checkin} - {booking.accom_checkout} "
+        f"({booking.nights} nights) {booking.guests} guests"
+    )
+            
+def main():
+    """Main function to run the booking viewer page"""
+    st.title(" ")
+    apply_custom_styles()
+    
+    # Create a search column layout
+    search_col1, search_col2, blank_space = st.columns([1, 0.5, 3])
+
+    # Initialize session state if not already there
+    if "recent_bookings" not in st.session_state:
+        st.session_state.recent_bookings = []
+    
+    # Track if we're using a recent booking selection
+    if "using_recent" not in st.session_state:
+        st.session_state.using_recent = False
+    
+    # Convert any existing IDs to new format tuples on startup and ensure all IDs are stripped
+    recent_bookings_updated = []
+    for item in st.session_state.recent_bookings:
+        if isinstance(item, tuple):
+            if len(item) == 3:
+                # Already in new format (id, property_name, guest_name)
+                id_val, prop_name, guest_name = item
+                recent_bookings_updated.append((id_val.strip(), prop_name, guest_name))
+            elif len(item) == 2:
+                # Old format (id, property_name)
+                id_val, prop_name = item
+                recent_bookings_updated.append((id_val.strip(), prop_name, ""))
+            else:
+                # Unexpected format, create new tuple with defaults
+                recent_bookings_updated.append((str(item[0]).strip(), "", ""))
+        else:
+            # If it's just a string ID, convert to tuple with empty property and guest names
+            recent_bookings_updated.append((item.strip(), "", ""))
+    
+    st.session_state.recent_bookings = recent_bookings_updated
+    
+    with st.sidebar:
+        # Get value for text input - use last_search if using_recent, otherwise empty
+        initial_value = ""
+        if st.session_state.using_recent and "last_search" in st.session_state:
+            initial_value = st.session_state.last_search
+            # Reset the flag after using it once
+            st.session_state.using_recent = False
+        
+        # Create the booking ID input field
+        booking_id = st.text_input(
+            "Booking ID", 
+            value=initial_value,
+            help="Enter the booking ID number"
+        )
+    
+    with st.sidebar:
+        # Place clear button in the same column
+        clear_button = st.button("Clear", use_container_width=True)
+    
+    # Create a sidebar for recent bookings
+    with st.sidebar:
+        st.header("Recent Searches")
+        
+        if not st.session_state.recent_bookings:
+            st.info("No bookings searched")
+        else:
+            st.write("Click to view a recent booking:")
+            for idx, item in enumerate(st.session_state.recent_bookings):
+                # Handle different tuple formats
+                if isinstance(item, tuple):
+                    if len(item) == 3:
+                        recent_id, property_name, guest_name = item
+                    elif len(item) == 2:
+                        recent_id, property_name = item
+                        guest_name = ""
+                    else:
+                        recent_id = str(item[0])
+                        property_name = ""
+                        guest_name = ""
+                else:
+                    recent_id = item
+                    property_name = ""
+                    guest_name = ""
                 
-                with left_col:
-                    write_key_booking_info(booking_data)
-                    write_days_to_checkin(booking_data)
-                    
-                    # Add package details if available
-                    if package_details and package_details.get('package'):
-                        pkg = package_details['package']
-                        with st.expander("Additional Package Details"):
-                            if pkg.get('currencyCode'):
-                                st.write(f"Currency: {pkg['currencyCode']}")
-                            if pkg.get('totalAmount'):
-                                st.write(f"Total Amount: ¥{pkg['totalAmount']:,}")
-                            if pkg.get('receivedAmount'):
-                                st.write(f"Received Amount: ¥{pkg['receivedAmount']:,}")
+                # Create button text with all available information
+                if property_name and guest_name:
+                    # Include both property name and guest name in button with a proper new line
+                    button_text = f"#{recent_id} - {property_name}\n{guest_name}"
+                elif property_name:
+                    button_text = f"#{recent_id} - {property_name}"
+                else:
+                    button_text = f"#{recent_id}"
                 
-                with right_col:
-                    write_room_info(booking_data)
-                    write_notes(booking_data)
-                    
-                    # Payment information with combined data
-                    with st.expander("Payment Information", expanded=True):
-                        write_payment_info(booking_data)
-                        if package_details and package_details.get('package', {}).get('invoicePayments'):
-                            st.markdown("##### Additional Payment Details")
-                            for payment in package_details['package']['invoicePayments']:
-                                payment_id = payment.get('paymentId', 'N/A')
-                                payment_method = payment.get('paymentMethod', 'N/A')
-                                st.write(f"Payment ID: {payment_id}")
-                                st.write(f"Method: {payment_method}")
-                    
-                    # Guest services section
-                    with st.expander("Guest Services", expanded=False):
-                        st.markdown("##### Available Services")
-                        st.markdown("""
-                        - Airport Transfers
-                        - Equipment Rentals
-                        - Lift Tickets
-                        - Lessons
-                        """)
+                # Create the button with the combined text
+                if st.button(button_text, key=f"recent_{idx}"):
+                    # Set the booking ID for the next run
+                    st.session_state.last_search = recent_id
+                    # Flag that we're using a recent booking selection
+                    st.session_state.using_recent = True
+                    st.rerun()
+                
+                # Add a small spacer between buttons
+                st.write("")
+
+    with st.sidebar:
+        write_links_box()
+    
+    # If a search was executed (booking ID entered)
+    if booking_id:  # Remove the .strip() check to always process any input
+        # Clean the booking ID (remove any whitespace)
+        clean_booking_id = booking_id.strip()
+
+        if clean_booking_id:  # Only proceed if there's something after stripping
+            # Extract just the IDs from the list of tuples for comparison (stripping each ID)
+            existing_ids = [id.strip() for id, _, _ in st.session_state.recent_bookings]
+            
+            if clean_booking_id not in existing_ids:
+                # Add to the front of the list (most recent first) with empty property and guest names initially
+                st.session_state.recent_bookings.insert(0, (clean_booking_id, "", ""))
+                # Limit the list size (e.g., keep only the 10 most recent)
+                st.session_state.recent_bookings = st.session_state.recent_bookings[:10]
+    
+            # Store the search in session state to maintain it on reruns
+            st.session_state.last_search = clean_booking_id
+    
+    # If clear button pressed
+    if clear_button:
+        # Simply remove last_search from session state
+        if "last_search" in st.session_state:
+            del st.session_state.last_search
+        # Rerun the app with a clean state
+        st.rerun()
+    
+    # If we have a previous search in session state, execute it
+    if "last_search" in st.session_state:
+        booking = fetch_booking_data(st.session_state.last_search)
+        
+        if booking:
+            # Display booking details
+            display_booking_details(booking)
+    
+    # If no search history, display a welcome message
+    if "last_search" not in st.session_state:
+        st.write("Enter a booking ID to view details")
+        
+        # Add a sample/recent bookings section (could be populated from a database)
+        with st.expander("Recent Bookings"):
+            st.info("Recent bookings feature coming soon")
 
 if __name__ == "__main__":
     main()
