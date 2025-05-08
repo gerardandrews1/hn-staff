@@ -110,6 +110,37 @@ class RoomBossAPI:
                 resp_lists.append(response_data)
         
         return resp_lists
+    
+
+    def get_rate_plan_descriptions(self, hotel_ids: List[str]) -> Dict[str, Dict[int, Dict[str, str]]]:
+        """
+        Fetch rate plan descriptions for each hotel ID.
+        Returns a dict with hotelId as key and nested dicts for each ratePlanId.
+        """
+        all_descriptions = {}
+
+        for hotel_id in hotel_ids:
+            url = f"{self.base_url}/listRatePlanDescription?hotelId={hotel_id}"
+            response = requests.get(url, auth=self.auth)
+            data = response.json()
+
+            if data and isinstance(data, list):
+                for hotel_data in data:
+                    hotel_id = hotel_data.get("vendorId")
+                    plans = hotel_data.get("ratePlanDescriptionList", [])
+                    hotel_rate_plans = {}
+                    for plan in plans:
+                        rate_plan_id = plan.get("ratePlanId")
+                        hotel_rate_plans[rate_plan_id] = {
+                            "name_en": plan.get("names", {}).get("en", ""),
+                            "desc_en": plan.get("descriptions", {}).get("en", ""),
+                            "long_desc_en": plan.get("longDescriptions", {}).get("en", "")
+                        }
+                    all_descriptions[hotel_id] = hotel_rate_plans
+
+        return all_descriptions
+
+
 
 # For backward compatibility
 RoombossService = RoomBossAPI

@@ -82,6 +82,56 @@ class RoomBossAPI:
             
         return resp_lists
 
+    def get_rate_plan_descriptions(self, hotel_ids: List[str]) -> Dict:
+        """Get rate plan descriptions for specified hotels"""
+        # Filter out empty strings from hotel IDs
+        hotel_ids = [hotel_id for hotel_id in hotel_ids if hotel_id]
+        
+        if not hotel_ids:
+            return {}
+        
+        # Build the URL with multiple hotelId parameters
+        params = "&".join([f"hotelId={hotel_id}" for hotel_id in hotel_ids])
+        url = f"{self.base_url}/listRatePlanDescription?{params}"
+        
+        try:
+            response = requests.get(url, auth=self.auth)
+            
+            if response.status_code != 200:
+                st.warning(f"Failed to fetch rate plan descriptions: {response.status_code}")
+                return {}
+            
+            # Parse response and organize by hotel ID
+            rate_plans_data = json.loads(response.text)
+            
+            # Organize data by hotel ID for easier access
+            organized_data = {}
+            for hotel_data in rate_plans_data:
+                vendor_id = hotel_data.get('vendorId')
+                if vendor_id:
+                    rate_plan_dict = {}
+                    for rate_plan in hotel_data.get('ratePlanDescriptionList', []):
+                        rate_plan_id = rate_plan.get('ratePlanId')
+                        if rate_plan_id:
+                            rate_plan_dict[rate_plan_id] = {
+                                'name_en': rate_plan.get('names', {}).get('en', ''),
+                                'name_ja': rate_plan.get('names', {}).get('ja', ''),
+                                'desc_en': rate_plan.get('descriptions', {}).get('en', ''),
+                                'desc_ja': rate_plan.get('descriptions', {}).get('ja', ''),
+                                'long_desc_en': rate_plan.get('longDescriptions', {}).get('en', ''),
+                                'long_desc_ja': rate_plan.get('longDescriptions', {}).get('ja', '')
+                            }
+                    organized_data[vendor_id] = rate_plan_dict
+                    
+            return organized_data
+            
+        except Exception as e:
+            st.error(f"Error fetching rate plan descriptions: {str(e)}")
+            return {}
+
+
+
+
 def init_session_state():
     """Initialize session state variables"""
     if "nights" not in st.session_state:
@@ -123,16 +173,22 @@ def process_search_results(
 
     # Process results
     stays_dict = {}
+    hotel_ids_used = set()  # New: Track unique hotel IDs
+    
     for response in resp_lists:
-        for hotel in response.get("availableHotels", {}):
+        for hotel in response.get("availableHotels", []):
             # Store the Hotel ID for later reference
             hotel_id = hotel.get('hotelId', 'N/A')
+            hotel_ids_used.add(hotel_id)  # New: Add to set of used hotel IDs
             
             avail_hotel = RbAvailableHotel(hotel, management_dict)
             for room_id, avail_room in avail_hotel.avail_rooms.items():
                 # Add Hotel ID to each room's data
                 room_data = {**avail_room, 'Room ID': room_id, 'Hotel ID': hotel_id}
                 stays_dict[room_id] = room_data
+    
+    # New: Store the hotel IDs for later use
+    st.session_state.hotel_ids_used = list(hotel_ids_used)
     
     return pd.DataFrame(stays_dict).T
 
@@ -508,10 +564,20 @@ def main():
             )
             
             st.session_state.stays = results_df
+            
+            # New: Fetch rate plan descriptions
+            if "hotel_ids_used" in st.session_state:
+                rate_plan_descs = api.get_rate_plan_descriptions(st.session_state.hotel_ids_used)
+                st.session_state.rate_plan_descs = rate_plan_descs
+
         except Exception as e:
             st.error(f"Error during search: {str(e)}")
             return
-    
+        
+    if "rate_plan_descs" not in st.session_state:
+        st.session_state.rate_plan_descs = {}
+
+
     if "stays" in st.session_state:
         with results_container:
             filtered_df = filter_results(
@@ -606,7 +672,7 @@ def main():
 
             with col2:
                 # Create tabs for the right column
-                tab1, tab2 = st.tabs(["Summary", "Graphs"])
+                tab1, tab2, tab3 = st.tabs(["Summary", "Graphs", "Rate Plans"])
                 
                 with tab1:
                                         
@@ -685,6 +751,75 @@ def main():
                             show_trends=False
                         )
                         st.plotly_chart(fig2, use_container_width=True)
+
+                with tab3:
+                    st.subheader("Rate Plan Information")
+                    
+                    if st.session_state.get("rate_plan_descs"):
+                        # Create a dropdown to select hotel
+                        hotel_names_dict = {}
+                        for idx, row in filtered_df.iterrows():
+                            hotel_id = row.get("Hotel ID", "N/A")
+                            hotel_name = row.get("Hotel Name", "Unknown Hotel")
+                            if hotel_id != "N/A":
+                                hotel_names_dict[hotel_id] = hotel_name
+                        
+                        selected_hotel = st.selectbox(
+                            "Select a property to view rate plans:", 
+                            options=list(hotel_names_dict.keys()),
+                            format_func=lambda x: hotel_names_dict.get(x, "Unknown Hotel")
+                        )
+                        
+                        if selected_hotel in st.session_state["rate_plan_descs"]:
+                            rate_plans = st.session_state["rate_plan_descs"][selected_hotel]
+                            
+                            if rate_plans:
+                                # Create a table of rate plans
+                                rate_plan_data = []
+                                for rp_id, info in rate_plans.items():
+                                    rate_plan_data.append({
+                                        "Rate Plan ID": rp_id,
+                                        "Name": info.get('name_en', ''),
+                                        "Description": info.get('desc_en', '')
+                                    })
+                                
+                                if rate_plan_data:
+                                    st.dataframe(
+                                        pd.DataFrame(rate_plan_data),
+                                        hide_index=True
+                                    )
+                                    
+                                    # Add a section to view detailed info for a specific rate plan
+                                    selected_rate_plan = st.selectbox(
+                                        "Select a rate plan to view details:",
+                                        options=[rp["Rate Plan ID"] for rp in rate_plan_data]
+                                    )
+                                    
+                                    if selected_rate_plan:
+                                        rp_info = rate_plans[selected_rate_plan]
+                                        with st.expander("Rate Plan Details", expanded=True):
+                                            col1, col2 = st.columns(2)
+                                            
+                                            with col1:
+                                                st.markdown("### English")
+                                                st.markdown(f"**Name:** {rp_info.get('name_en', '')}")
+                                                st.markdown(f"**Short Description:** {rp_info.get('desc_en', '')}")
+                                                st.markdown(f"**Long Description:**")
+                                                st.markdown(rp_info.get('long_desc_en', ''))
+                                            
+                                            with col2:
+                                                st.markdown("### Japanese")
+                                                st.markdown(f"**Name:** {rp_info.get('name_ja', '')}")
+                                                st.markdown(f"**Short Description:** {rp_info.get('desc_ja', '')}")
+                                                st.markdown(f"**Long Description:**")
+                                                st.markdown(rp_info.get('long_desc_ja', ''))
+                            else:
+                                st.info("No rate plans found for this hotel.")
+                        else:
+                            st.info("No rate plan information available for the selected hotel.")
+                    else:
+                        st.info("Rate plan information will be shown after a search is performed.")
+                                    
 
 if __name__ == "__main__":
     main()

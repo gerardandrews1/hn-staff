@@ -136,7 +136,7 @@ def display_booking_details(booking):
     process_room_data(booking)
     
     # Create three columns
-    left_col, middle_col, right_col = st.columns([2, 2, 2])
+    left_col, middle_col, right_col = st.columns([1.5, 2, 1.7])
     
     # Display booking info in left column
     with left_col:
@@ -282,7 +282,7 @@ def main():
         if not st.session_state.recent_bookings:
             st.info("No bookings searched")
         else:
-            st.write("Click to view a recent booking:")
+            # st.write("Click to view a recent booking:")
             for idx, item in enumerate(st.session_state.recent_bookings):
                 # Handle different tuple formats
                 if isinstance(item, tuple):
