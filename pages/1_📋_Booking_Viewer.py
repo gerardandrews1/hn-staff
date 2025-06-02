@@ -1,4 +1,6 @@
+# -*- coding: utf-8 -*-
 # pages/booking_viewer.py
+
 
 import streamlit as st
 import json
@@ -28,6 +30,25 @@ def write_links_box():
             st.markdown(f"[Rhythm referral link]({rhythm_referral_link})")
             st.markdown(f"[Guest Service Guide link]({gsg_link})")
 
+# def apply_custom_styles():
+#     """Apply custom CSS styling to the page"""
+#     st.markdown(
+#         """
+#         <style>
+#         footer {display: none}
+#         .block-container {
+#             padding-top: 2rem;
+#             padding-bottom: 2rem;
+#         }
+#         .stButton button {
+#             width: 100%;
+#             white-space: pre-wrap !important;
+#         }
+#         </style>
+#         """, 
+#         unsafe_allow_html=True
+#     )
+
 def apply_custom_styles():
     """Apply custom CSS styling to the page"""
     st.markdown(
@@ -42,10 +63,100 @@ def apply_custom_styles():
             width: 100%;
             white-space: pre-wrap !important;
         }
+        
+        /* New styles for better visual hierarchy */
+        .section-header {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1E3A8A;
+            margin-top: 15px;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #E5E7EB;
+        }
+        
+        .booking-id {
+            font-size: 22px;
+            font-weight: bold;
+            color: #1E3A8A;
+            margin-bottom: 10px;
+        }
+        
+        .booking-info {
+            padding: 10px;
+            background-color: #F9FAFB;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .status-active {
+            display: inline-block;
+            color: white;
+            background-color: #10B981;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        .status-pending {
+            display: inline-block;
+            color: white;
+            background-color: #F59E0B;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        .action-button {
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            color: #4B5563;
+        }
+        
+        .highlight-box {
+            background-color: #EFF6FF;
+            border-left: 3px solid #3B82F6;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        /* Invoice table specific styling */
+        .invoice-table-container {
+            max-width: 100%;
+            overflow-x: auto;
+        }
+        
+        .invoice-table-container table {
+            width: auto !important;
+            table-layout: auto !important;
+        }
+        
+        .invoice-table-container th, .invoice-table-container td {
+            white-space: nowrap;
+            padding: 4px 8px;
+            min-width: 60px;
+            max-width: 120px;
+        }
+        /* Add these styles to fix text wrapping */
+        .email-subject {
+            white-space: normal;
+            word-wrap: break-word;
+            max-width: 100%;
+            overflow-wrap: break-word;
+        }
         </style>
         """, 
         unsafe_allow_html=True
-    )
+        )
+
+
+
 
 def fetch_booking_data(booking_id):
     """
@@ -129,59 +240,68 @@ def fetch_booking_data(booking_id):
         st.error(f"Error: {str(e)}")
         return None
 
+
+# Replace your existing display_booking_details function with this:
+# Replace your display_booking_details function with this:
+
 def display_booking_details(booking):
-    """Display booking details in a three-column layout"""
+    """Display booking details in a three-column layout with better spacing"""
     # Process room data first without displaying (just to set variables)
-    # We'll use a separate function to avoid duplicate displays
     process_room_data(booking)
     
-    # Create three columns
-    left_col, middle_col, right_col = st.columns([1.5, 2, 1.7])
+    # Create three columns with adjusted ratios for better fit
+    left_col, middle_col, right_col = st.columns([0.6, 0.8, 1.2])
     
-    # Display booking info in left column
+    # Display booking info in left column - NO SKI RENTAL DETAILS
     with left_col:
         with st.container(border=True):
             booking.write_key_booking_info()
             booking.write_notes()
+            # Removed ski rental summary from here
     
     # Display email subject and room info in middle column
     with middle_col:
         # Email subject at the top
-        st.markdown("##### Email Subject")
-        st.markdown(booking.email_subject_line)
-        
-        # Room information
-        # st.markdown("##### Room Information")
-        booking.write_room_info(booking.room_list_todf)  
+        with st.container(border=True):
+            st.markdown("##### Email Subject")
+            st.markdown(f'<div class="email-subject">{booking.email_subject_line}</div>', unsafe_allow_html=True)
+            st.write("---")
+            # Room information
+            booking.write_room_info(booking.room_list_todf)  
     
-    # Display check-in info in right column
+    # Display invoices and emails in right column
     with right_col:
-        with st.container():
+        # Invoices container - with borders to clearly separate
+        with st.expander(label="Invoices & Payments", expanded = True):
             booking.write_payment_df()
-    
-    # Add divider before email templates section
-    st.write("---")
-    
-    # Create lower section for email templates
-    email_col, spacer_col = st.columns([4, 1])
-    
-    # Display email templates
-    with email_col:
-        st.write("Emails")
-        with st.container():
+        
+        # Add a small spacer
+        st.write("")
+        
+        # Emails container - also with borders
+        with st.container(border=True):
+            st.write("Emails")
+            
             # Create tabs for different email templates
             email_tabs = st.tabs([
-                "Booking Confirmation", 
+                "Confirmation", 
                 "Guest Services", 
-                "OTA Emails", 
+                "OTA", 
                 "Payment"
             ])
             
             with email_tabs[0]:  # Booking Confirmation
                 booking.write_booking_confirmation()
             
-            with email_tabs[1]:  # Guest Services
+            with email_tabs[1]:  # Guest Services - includes ski rentals
+                # Regular guest services upsell
                 booking.write_gsg_upsell()
+                
+                # Add ski rental emails if they exist
+                if booking.has_ski_rentals():
+                    st.write("---")
+                    
+                    booking.write_ski_rental_confirmation_emails()
             
             with email_tabs[2]:  # OTA Emails
                 booking.write_first_ota_email()

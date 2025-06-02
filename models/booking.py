@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # src/components/booking.py
 
 import datetime
@@ -66,7 +67,7 @@ class Booking:
         self.lead_guest_dict = self.json_response.get("order", {}).get("leadGuest", {})
         self.pay_inv_dict = self.json_response.get("order", {}).get("invoicePayments", {})
         
-        # Parse dictionaries
+        # Parse guest and invoice dictionaries
         if self.booking_dict is not None:
             self.parse_book_dict()
         
@@ -74,6 +75,9 @@ class Booking:
         
         if self.pay_inv_dict:
             self.parse_payment_info(self.pay_inv_dict)
+
+        # Look for ski rental bookings
+        self.parse_ski_rental_bookings()
         
         # Create links based on parsed data
         if self.booking_id:
@@ -208,7 +212,7 @@ class Booking:
             self.guests += room_guests
             
             # Add room price
-            price_retail = room.get("priceRetail", {})
+            price_retail = room.get("priceSell", {})
             curr_room_list.append(f"¥{price_retail:,.0f}")
             
             # Add to the master list
@@ -267,35 +271,107 @@ class Booking:
         self.amount_received = self.payment_info_df.Paid.sum()
     
     def attribute_booking(self):
-        """Determine booking source channels"""
-        self.booking_source_1 = ""
-        self.booking_source_2 = ""
+        """
+        Determine booking source based on Custom ID patterns and booking_source
+        Sets booking_source_1 and booking_source_2 attributes
+        """
+        # Default values
+        self.booking_source_1 = "Unknown"
+        self.booking_source_2 = "Unknown"
         
-        # Check for Airbnb bookings
-        if self.custom_id:
-            if len(self.custom_id) > 0:
-                if (self.custom_id[0] == "H" and 
-                    self.booking_source.lower() == "roomboss channel manager"):
-                    self.booking_source_1 = "OTA"
-                    self.booking_source_2 = "Airbnb"
+        # Make sure we have a custom_id to work with
+        if not hasattr(self, 'custom_id'):
+            self.custom_id = ""
         
-        # Check for Book and Pay bookings
-        if not self.custom_id:
-            self.booking_source_1 = "Book and Pay"
+        custom_id = str(self.custom_id) if self.custom_id is not None else ""
         
-        # Check for agent bookings
-        agents = ["j", "d", "as", "perrin", "ash", "ryo"]
-        if self.custom_id and self.custom_id.lower() in agents:
-            self.booking_source_1 = "HN Staff"
-            self.booking_source_2 = self.custom_id
-    
-    # UI RENDERING METHODS
+        # Get booking_source if available
+        booking_source = ""
+        if hasattr(self, 'booking_source'):
+            booking_source = str(self.booking_source) if self.booking_source is not None else ""
+        
+        # Check for OTAs based on custom_id patterns
+        if custom_id:
+            # Airbnb - look for 'H' prefix in customId and RoomBoss Channel Manager
+            if (custom_id[0] == 'H' and len(custom_id) == 10 and 
+                booking_source and "roomboss channel manager" in booking_source.lower()):
+                self.booking_source_2 = "Airbnb"
+            
+            # Booking.com
+            elif len(custom_id) == 10 and custom_id[0] != 'H':
+                self.booking_source_2 = "Booking.com"
+            
+            # Expedia - multiple patterns
+            elif ((len(custom_id) == 8 and custom_id[0] == '4') or
+                (len(custom_id) == 9 and custom_id[0] == '3') or
+                (len(custom_id) == 8 and custom_id[0] == '7') or
+                (len(custom_id) == 9 and custom_id[0] == '2')):
+                self.booking_source_2 = "Expedia"
+            
+            # Jalan
+            elif ((len(custom_id) == 8 and custom_id[0] == '0') or
+                custom_id[:2] == '6X' or custom_id[:2] == '6J'):
+                self.booking_source_2 = "Jalan"
+            
+            # Staff bookings
+            elif custom_id.lower() in ["d", "ryo", "as", "j", "jj", "ash", "t", "tom", "p", "li"]:
+                self.booking_source_1 = "HN Staff"
+                self.booking_source_2 = custom_id
+        
+        # Book & Pay (Direct) - when custom_id is empty
+        else:
+            self.booking_source_1 = "Book & Pay"
+            self.booking_source_2 = "Book & Pay"
+        
+        # Set Channel1 based on Channel2 for OTAs
+        if self.booking_source_2 in ['Airbnb', 'Booking.com', 'Expedia', 'Jalan']:
+            self.booking_source_1 = "OTA"
+        
+        return (self.booking_source_1, self.booking_source_2)
+        # UI RENDERING METHODS
     
     def write_key_booking_info(self):
         """Display key booking information"""
         st.markdown(f"##### {self.vendor} #{self.eId}")
         st.markdown(f"###### {self.full_name}")
         st.write(f"Created - {self.created_date} ")
+
+        # Display booking source right after creation date
+        # Display booking source right after creation date with color coding
+        if hasattr(self, 'booking_source_1') and self.booking_source_1 != "Unknown":
+            # Define color mapping for different booking sources
+            source_colors = {
+                "Airbnb": "#FF5A5F",       # Airbnb red
+                "Booking.com": "#003580",   # Booking.com blue
+                "Expedia": "#00355F",       # Expedia blue
+                "Jalan": "#FF0000",         # Jalan red
+                "Book & Pay": "#00A699",    # Teal green
+                "HN Staff": "#6B5B95",      # Purple
+            }
+            
+            # Default color for unknown sources
+            default_color = "#6B7280"  # Gray
+            
+            # Determine source text and color
+            if hasattr(self, 'booking_source_2') and self.booking_source_2 and self.booking_source_2 != "Unknown" and self.booking_source_1 != self.booking_source_2:
+                source_text = f"{self.booking_source_1} - {self.booking_source_2}"
+                # Use the color for booking_source_2 if available, otherwise use default
+                color = source_colors.get(self.booking_source_2, default_color)
+            else:
+                source_text = f"{self.booking_source_1}"
+                # Use the color for booking_source_1 if available, otherwise use default
+                color = source_colors.get(self.booking_source_1, default_color)
+            
+            # Display the booking source with color coding
+            st.markdown(
+                f'<div style="display: inline-flex; align-items: center;">'
+                f'<strong>Booked via:</strong>&nbsp;'
+                f'<span style="background-color: {color}; color: white; '
+                f'padding: 2px 8px; border-radius: 10px; font-size: 14px;">{source_text}</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        st.write("---")
         
         # Display management company
         if self.managed_by == 'Holiday Niseko':
@@ -308,6 +384,9 @@ class Booking:
             st.write(f"**:green[Booking is Active]**")
         else:
             st.write(f":red[Booking is Cancelled]")
+
+
+        
         
         # Display RoomBoss link
         st.markdown(f"[Open #{self.eId} in RoomBoss]({self.rboss_launch})")
@@ -333,7 +412,7 @@ class Booking:
     
     def write_payment_df(self):
         """Display payment information table"""
-        st.markdown("###### Invoices and Payments")
+        # st.markdown("###### Invoices and Payments")
         
         if self.pay_inv_dict:
             # Format dates
@@ -559,15 +638,15 @@ class Booking:
             table_html += f'<td>{room[5]}</td>'  # Guests is sixth item
         
         # Add rates only if managed by Holiday Niseko
-        if self.managed_by == "Holiday Niseko":
-            table_html += """
-                    </tr>
-                    <tr>
-                        <th>Rate</th>
-            """
-            for room in rooms:
-                table_html += f'<td>{room[6]}</td>'  # Rate is seventh item
-        
+        # if self.managed_by == "Holiday Niseko":
+        table_html += """
+                </tr>
+                <tr>
+                    <th>Rate</th>
+        """
+        for room in rooms:
+            table_html += f'<td>{room[6]}</td>'  # Rate is seventh item
+    
         # Close the table
         table_html += """
                 </tr>
@@ -863,6 +942,8 @@ class Booking:
         except TypeError:
             return
 
+
+
     def write_booking_confirmation(self):
         """Write the booking confirmation with multiple rooms in a single table with columns"""
         try: 
@@ -874,123 +955,249 @@ class Booking:
                 expanded=False)
             
             with bk_confirmation_expander:
-                # CSS styling
+                # CSS styling - FIXED TEXT WRAPPING
                 st.markdown("""
                     <style>
+                    /* Remove the problematic nowrap rules that prevent text wrapping */
                     .streamlit-expanderContent {
-                        white-space: nowrap !important;
+                        white-space: normal !important;
                     }
                     .element-container {
-                        white-space: nowrap !important;
+                        white-space: normal !important;
                     }
+                    
+                    /* Add proper text wrapping for all text content */
+                    .booking-text-content {
+                        white-space: normal;
+                        word-wrap: break-word;
+                        overflow-wrap: break-word;
+                        max-width: 100%;
+                        line-height: 1.5;
+                    }
+                    
+                    /* Responsive table wrapper */
                     .table-wrapper {
                         border: 1px solid #e0e0e0;
                         border-top: 4px solid #0C8C3C;
                         background: white;
                         padding: 0;
-                        margin: 0 0 20px 0;
+                        margin: 0 0 1.25rem 0;
                         white-space: nowrap;
                         overflow-x: auto;
                         max-width: 100%;
                         display: inline-block;
+                        width: auto;
+                        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
                     }
+                    
+                    /* Responsive table sizing */
                     .single-room-table {
-                        width: 350px;
-                    }
-                    .multi-room-table {
                         width: 100%;
-                    }
-                    .multi-room-table {
-                        width: 100%;
+                        min-width: 350px;
+                        max-width: 500px;
                         border-collapse: collapse;
-                        font-size: 14px;
+                        font-size: 0.875rem;
                     }
+                    
+                    .multi-room-table {
+                        width: 100%;
+                        min-width: 600px;
+                        border-collapse: collapse;
+                        font-size: 0.875rem;
+                    }
+                    
                     .header-row {
                         background: white;
                         border-bottom: 1px solid #e0e0e0;
                     }
+                    
                     .header-cell {
-                        padding: 15px;
+                        padding: 0.9375rem;
                         color: #333;
                         text-align: left;
                     }
+                    
                     .booking-id {
                         color: #000000;
-                        font-size: 14px;
-                        margin: 0 0 10px 0;
+                        font-size: 0.875rem;
+                        margin: 0 0 0.625rem 0;
                     }
+                    
                     .login-button {
                         display: inline-block;
                         background-color: #FFB800;
                         color: #000000;
-                        padding: 6px 12px;
+                        padding: 0.375rem 0.75rem;
                         text-decoration: none;
-                        border-radius: 4px;
+                        border-radius: 0.25rem;
                         font-weight: 600;
-                        font-size: 13px;
+                        font-size: 0.8125rem;
+                        min-height: 2.25rem; /* Touch target size */
+                        line-height: 1.5;
                     }
+                    
                     .property-row th {
                         font-weight: 500;
                         color: #333;
                         background: #f8f8f8;
-                        padding: 10px;
+                        padding: 0.625rem;
                         border: 1px solid #e0e0e0;
                     }
+                    
                     .multi-room-table th {
-                        width: 130px;
+                        width: 8.125rem;
+                        min-width: 6rem;
                         font-weight: 500;
                         color: #333;
                         background: #f8f8f8;
-                        padding: 10px;
+                        padding: 0.625rem;
                         border: 1px solid #e0e0e0;
                     }
+                    
                     .multi-room-table td {
                         background: white;
-                        padding: 10px;
+                        padding: 0.625rem;
                         border: 1px solid #e0e0e0;
                         text-align: center;
+                    }
+                    
+                    /* Mobile responsive styles */
+                    @media (max-width: 768px) {
+                        .booking-text-content {
+                            font-size: 0.9375rem;
+                            line-height: 1.4;
+                        }
+                        
+                        .table-wrapper {
+                            margin: 0 0 1rem 0;
+                            border-radius: 0.25rem;
+                        }
+                        
+                        .single-room-table {
+                            min-width: 320px;
+                            font-size: 0.8125rem;
+                        }
+                        
+                        .multi-room-table {
+                            min-width: 480px;
+                            font-size: 0.8125rem;
+                        }
+                        
+                        .header-cell {
+                            padding: 0.75rem;
+                            font-size: 0.875rem;
+                        }
+                        
+                        .booking-id {
+                            font-size: 0.8125rem;
+                        }
+                        
+                        .login-button {
+                            padding: 0.5rem 0.875rem;
+                            font-size: 0.75rem;
+                            min-height: 2.75rem; /* Larger touch target on mobile */
+                        }
+                        
+                        .property-row th,
+                        .multi-room-table th,
+                        .multi-room-table td {
+                            padding: 0.5rem 0.375rem;
+                            font-size: 0.75rem;
+                        }
+                        
+                        .multi-room-table th {
+                            min-width: 4.5rem;
+                        }
+                    }
+                    
+                    /* Extra small screens */
+                    @media (max-width: 480px) {
+                        .booking-text-content {
+                            font-size: 0.875rem;
+                        }
+                        
+                        .single-room-table {
+                            min-width: 280px;
+                            font-size: 0.75rem;
+                        }
+                        
+                        .multi-room-table {
+                            min-width: 400px;
+                            font-size: 0.75rem;
+                        }
+                        
+                        .header-cell {
+                            padding: 0.625rem;
+                            font-size: 0.8125rem;
+                        }
+                        
+                        .login-button {
+                            font-size: 0.6875rem;
+                            padding: 0.5rem 0.75rem;
+                        }
+                        
+                        .property-row th,
+                        .multi-room-table th,
+                        .multi-room-table td {
+                            padding: 0.375rem 0.25rem;
+                            font-size: 0.6875rem;
+                        }
+                        
+                        .multi-room-table th {
+                            min-width: 3.5rem;
+                        }
                     }
                     </style>
                 """, unsafe_allow_html=True)
 
-                # Header section
+                # Header section - WRAPPED IN TEXT CONTENT DIV
                 st.markdown(f"""
-                Booking Confirmation #{self.eId} - {self.vendor}  
+                <div class="booking-text-content">
+                            
+                Booking Confirmation #{self.eId} - {self.vendor}<br>
                                     
-                Hi {self.given_name},
+                Hi {self.given_name},<br>
 
-                Thank you for choosing Holiday Niseko! We're delighted to confirm your booking with us.
+                Thank you for choosing Holiday Niseko! We're delighted to confirm your booking with us.<br>
                 
-                Please take a moment to review your booking confirmation below to ensure everything is correct.
+                Please take a moment to review your booking confirmation below to ensure everything is correct.<br>
                 
-                **To secure your booking a 20% non-refundable deposit is required within 5 days**  
+                <strong>To secure your booking a 20% non-refundable deposit is required within 5 days</strong>
+                </div>
                 """, unsafe_allow_html=True)
 
                 # Group rooms by booking to display them together
                 self._render_booking_tables()
                 
-                # Footer section
+                # Footer section - WRAPPED IN TEXT CONTENT DIV
                 st.markdown(f"""
-                **Payment Information**
-                - Initial deposit: 20% (due within 5 days)
-                - Final balance: Due 60 days before check-in  
+                <div class="booking-text-content">
+                <strong>Payment Information</strong>
+                <ul>
+                    <li>Initial deposit: 20% (due within 5 days)</li>
+                    <li>Final balance: Due 60 days before check-in</li>
+                </ul>
                 
-                <a href="https://holidayniseko.evoke.jp/public/yourbooking.jsf?id={self.eId}&em={self.guest_email}">Pay securely in your local currency here</a>
+                <a href="https://holidayniseko.evoke.jp/public/yourbooking.jsf?id={self.eId}&em={self.guest_email}">Pay securely in your local currency here</a><br>
 
-                *We've partnered with Flywire to offer payments in your local currency, reducing exchange fees while we receive payment in JPY.*
+                <em>We've partnered with Flywire to offer payments in your local currency, reducing exchange fees while we receive payment in JPY.</em><br>
 
-                **Important Links**
-                - <a href="https://holidayniseko.com/terms-and-conditions"> Terms and Conditions</a>
-                - <a href="https://holidayniseko.com/faq">Frequently Asked Questions</a>
-                - <a href="https://holidayniseko.com/my-booking">Login to MyBooking - Check details, entry instructions, location and more </a>
+                <strong>Important Links</strong>
+                <ul>
+                    <li><a href="https://holidayniseko.com/terms-and-conditions"> Terms and Conditions</a></li>
+                    <li><a href="https://holidayniseko.com/faq">Frequently Asked Questions</a></li>
+                    <li><a href="https://holidayniseko.com/my-booking">Login to MyBooking - Check details, entry instructions, location and more </a></li>
+                </ul>
 
-                *We recommend securing travel insurance to protect your booking.*
+                <em>We recommend securing travel insurance to protect your booking.</em>
+                </div>
                 """, unsafe_allow_html=True)
                     
         except Exception as e:
             st.error(f"Error in write_booking_confirmation: {str(e)}")
             import traceback
             st.error(traceback.format_exc())
+
 
     def _render_booking_tables(self):
         """Helper method to render booking tables for confirmation"""
@@ -1009,7 +1216,7 @@ class Booking:
                 }
                 
                 # Create the URL with parameters
-                my_booking_url = f"https://holidayniseko.com/my-booking?{urlencode(params)}"
+                my_booking_url = f"https://holidayniseko.com/my-booking"
                 
                 # Extract all rooms for this booking
                 rooms = []
@@ -1020,7 +1227,7 @@ class Booking:
                         'check_out': pd.to_datetime(room.get('checkOut', '')).strftime('%b %d, %Y'),
                         'nights': (pd.to_datetime(room.get('checkOut', '')) - pd.to_datetime(room.get('checkIn', ''))).days,
                         'guests': room.get('numberGuests', 0),
-                        'rate': f"¥{room.get('priceRetail', 0):,.0f}"
+                        'rate': f"¥{room.get('priceSell', 0):,.0f}"
                     })
                 
                 bookings_with_rooms[booking_id] = {
@@ -1099,16 +1306,16 @@ class Booking:
                 table_html += f'<td>{room["guests"]}</td>'
             
             # Only show rate row if it's Holiday Niseko managed
-            if self.managed_by == "Holiday Niseko":
-                table_html += """
-                        </tr>
-                        <tr>
-                            <th>Rate</th>
-                """
-                
-                for room in rooms:
-                    table_html += f'<td>{room["rate"]}</td>'
+            # if self.managed_by == "Holiday Niseko":
+            table_html += """
+                    </tr>
+                    <tr>
+                        <th>Rate</th>
+            """
             
+            for room in rooms:
+                table_html += f'<td>{room["rate"]}</td>'
+        
             # Close the table
             table_html += """
                     </tr>
@@ -1187,3 +1394,174 @@ class Booking:
             st.markdown(table_html, unsafe_allow_html=True)
         
         return None
+    
+    # REPLACE the ski rental methods in your booking.py with these:
+
+    def parse_ski_rental_bookings(self):
+        """Parse ski rental bookings - one email per Rhythm booking"""
+        self.ski_rentals = []
+        
+        for booking in self.booking_dict:
+            if booking.get("bookingType") == "SERVICE":
+                # Check if this is a Rhythm service provider (ski rental)
+                service_provider = booking.get("serviceProvider", {}).get("serviceProviderName", "")
+                
+                if "rhythm" in service_provider.lower():
+                    # Create one rental entry per Rhythm booking
+                    rental_entry = {
+                        'booking_id': booking.get("eId", ""),
+                        'service_provider': service_provider,
+                        'booking_notes': booking.get("notes", ""),
+                        'items': [],
+                        'start_date': None,
+                        'end_date': None
+                    }
+                    
+                    # Get all items and find date range
+                    start_dates = []
+                    end_dates = []
+                    
+                    for item in booking.get("items", []):
+                        rental_item = {
+                            'service_name': item.get("service", {}).get("serviceName", ""),
+                            'category': item.get("category", ""),
+                            'parent_category': item.get("parentCategory", ""),
+                            'price': item.get("priceRetail", 0),
+                            'start_date': item.get("startDate", ""),
+                            'end_date': item.get("endDate", "")
+                        }
+                        rental_entry['items'].append(rental_item)
+                        
+                        if rental_item['start_date']:
+                            start_dates.append(rental_item['start_date'])
+                        if rental_item['end_date']:
+                            end_dates.append(rental_item['end_date'])
+                    
+                    # Set overall date range for this rental booking
+                    if start_dates:
+                        rental_entry['start_date'] = min(start_dates)
+                    if end_dates:
+                        rental_entry['end_date'] = max(end_dates)
+                    
+                    # Calculate total price
+                    rental_entry['total_price'] = sum(item['price'] for item in rental_entry['items'])
+                    
+                    self.ski_rentals.append(rental_entry)
+
+    def has_ski_rentals(self):
+        """Check if this booking includes ski rentals"""
+        if not hasattr(self, 'ski_rentals'):
+            self.parse_ski_rental_bookings()
+        return len(self.ski_rentals) > 0
+    
+
+    def write_ski_rental_confirmation_emails(self):
+        """Generate styled ski rental confirmation emails – one per Rhythm booking"""
+        if not self.has_ski_rentals():
+            return
+
+        for rental in self.ski_rentals:
+            with st.expander(f"Rhythm Rental Confirmation #{rental['booking_id']}", expanded=False):
+                st.markdown(f"""
+                    
+                    <h4 style="color: #0C8C3C;">🎿 Rhythm Rental Confirmation</h4>
+                    <p>Hi {self.given_name},</p>
+                    <p>Thank you for booking your ski rental through Holiday Niseko! We're excited to help make your Niseko adventure unforgettable.</p>
+
+                    <div style="background-color: #f0f8ff; border-left: 4px solid #009645; padding: 15px; border-radius: 6px;">
+                        <h4 style="margin-top: 0; color: #009645;">📋 Your Booking Details</h4>
+                        <p><strong>Rental Booking Reference:</strong> {rental['booking_id']}</p>
+                        <p>Please check your booking details in the attached PDF</p>
+                        <p><strong> Pickup Information</p>
+                        <ul>
+                            <li><strong>Pickup Time:</strong> From 1:00 PM the day before your rental start date</li>
+                            <li><strong>Location:</strong> <a href="https://maps.app.goo.gl/wix4Mrq6u4fyhSAk6" style="color: #009645;">Rhythm Niseko Rental Shop</a></li>
+                    </div>
+
+                    <div style="background-color: #fff3cd; border-radius: 6px; padding: 15px; margin-top: 20px;">
+                        <h4 style="color: #333333;">💳 Payment Information</h4>
+                        <p><strong>Payment Due:</strong> 60 days before your check-in date</p>
+                        <p><a href={self.payment_link} style="background-color: #ffc107; color: #000000; padding: 10px 20px; text-decoration: none; border-radius: 20px; font-weight: bold;">Complete Payment</a></p>
+                        <p>You can view your booking and make payments anytime using the link above.</p>
+                    </div>
+
+                    <div style="background-color: #f8f9fa; border-radius: 6px; padding: 15px; margin-top: 20px;">
+                        <h4 style="color: #333333;">🔄 Cancellation Policy</h4>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead>
+                                <tr style="background-color: #f4f4f4;">
+                                    <th style="border: 1px solid #ddd; padding: 10px;">Cancellation Timing</th>
+                                    <th style="border: 1px solid #ddd; padding: 10px;">Refund Policy</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="border: 1px solid #ddd; padding: 10px;">More than 48 hours before rental</td>
+                                    <td style="border: 1px solid #ddd; padding: 10px;">Full refund provided</td>
+                                </tr>
+                                <tr>
+                                    <td style="border: 1px solid #ddd; padding: 10px;">Less than 48 hours before rental</td>
+                                    <td style="border: 1px solid #ddd; padding: 10px;">No cash refund – store credit issued for equal value (valid at participating stores in Japan for current season only)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p style="margin-top: 20px;">We look forward to seeing you in Niseko!</p>
+                """, unsafe_allow_html=True)
+
+
+    def _render_ski_rental_table(self, rental):
+        """Render ski rental items in a properly formatted HTML table."""
+        table_html = f"""
+        <style>
+            .ski-rental-table {{
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 14px;
+                margin: 20px 0;
+            }}
+            .ski-rental-table th, .ski-rental-table td {{
+                border: 1px solid #ddd;
+                padding: 10px;
+                text-align: center;
+            }}
+            .ski-rental-table th {{
+                background-color: #f4f4f4;
+                font-weight: bold;
+            }}
+        </style>
+        <table class="ski-rental-table">
+            <thead>
+                <tr>
+                    <th>Equipment</th>
+                    <th>Category</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+        """
+
+        for item in rental['items']:
+            table_html += f"""
+                <tr>
+                    <td>{item['service_name']}</td>
+                    <td>{item['category']}</td>
+                    <td>¥{item['price']:,.0f}</td>
+                </tr>
+            """
+
+        table_html += """
+            </tbody>
+        </table>
+        """
+
+        st.markdown(table_html, unsafe_allow_html=True)
+
+
+
+
+    def display_ski_rental_summary(self):
+        """Display a summary of ski rentals in the main booking view"""
+        # Remove this method entirely - we don't want the details in the left column
+        pass
