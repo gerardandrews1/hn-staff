@@ -4,6 +4,9 @@
 import datetime
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
+
+
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any, Union
 
@@ -97,7 +100,7 @@ class Booking:
         if hasattr(self, 'eId'):
             self.gsg_link = (
                 "https://holidayniseko2.evoke.jp/public/booking/order02"
-                ".jsf?mv=1&vs=WinterGuestServices&bookingEid=" + str(self.eId)
+                ".jsf?mv=1&vs=allservices&bookingEid=" + str(self.eId)
             )
     
     def parse_lead_guest(self, lead_guest_dict):
@@ -1454,7 +1457,6 @@ class Booking:
             self.parse_ski_rental_bookings()
         return len(self.ski_rentals) > 0
     
-
     def write_ski_rental_confirmation_emails(self):
         """Generate styled ski rental confirmation emails – one per Rhythm booking"""
         if not self.has_ski_rentals():
@@ -1462,53 +1464,67 @@ class Booking:
 
         for rental in self.ski_rentals:
             with st.expander(f"Rhythm Rental Confirmation #{rental['booking_id']}", expanded=False):
-                st.markdown(f"""
-                    
-                    <h4 style="color: #0C8C3C;">🎿 Rhythm Rental Confirmation</h4>
-                    <p>Hi {self.given_name},</p>
-                    <p>Thank you for booking your ski rental through Holiday Niseko! We're excited to help make your Niseko adventure unforgettable.</p>
+                rental_id = rental['booking_id']
+                payment_link = self.payment_link
+                guest_name = self.given_name
 
-                    <div style="background-color: #f0f8ff; border-left: 4px solid #009645; padding: 15px; border-radius: 6px;">
-                        <h4 style="margin-top: 0; color: #009645;">📋 Your Booking Details</h4>
-                        <p><strong>Rental Booking Reference:</strong> {rental['booking_id']}</p>
-                        <p>Please check your booking details in the attached PDF</p>
-                        <p><strong> Pickup Information</p>
-                        <ul>
-                            <li><strong>Pickup Time:</strong> From 1:00 PM the day before your rental start date</li>
-                            <li><strong>Location:</strong> <a href="https://maps.app.goo.gl/wix4Mrq6u4fyhSAk6" style="color: #009645;">Rhythm Niseko Rental Shop</a></li>
-                    </div>
+                html_content = f"""
+    <div style="max-width: 720px; margin: 0 auto; font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+    <p>Hi {guest_name},</p>
+    <p>
+    Thank you for booking your rentals through Holiday Niseko!<br><br>
+    Your booking is confirmed – please review the details below.
+    </p>
 
-                    <div style="background-color: #fff3cd; border-radius: 6px; padding: 15px; margin-top: 20px;">
-                        <h4 style="color: #333333;">💳 Payment Information</h4>
-                        <p><strong>Payment Due:</strong> 60 days before your check-in date</p>
-                        <p><a href={self.payment_link} style="background-color: #ffc107; color: #000000; padding: 10px 20px; text-decoration: none; border-radius: 20px; font-weight: bold;">Complete Payment</a></p>
-                        <p>You can view your booking and make payments anytime using the link above.</p>
-                    </div>
+    <!-- Booking Details -->
+    <div style="background-color: #eaf6ff; border-left: 4px solid #009645; padding: 16px; border-radius: 6px; width: 100%;">
+        <h3 style="font-size: 16px; margin-bottom: 10px; color: #009645;">📋 Your Booking Details</h3>
+        <div style="background-color: #009645; color: white; padding: 10px 16px; display: inline-block; border-radius: 4px;">
+        <strong>Rental Booking Reference: {rental_id}</strong>
+        </div>
+        <p style="margin-top: 16px;">Please check your booking details in the attached PDF.</p>
+        <p style="margin: 8px 0;"><strong>Pickup Time:</strong> From 1:00 PM the day before your rental start date</p>
+        <p style="margin: 8px 0;"><strong>Location:</strong> <a href="https://maps.app.goo.gl/wix4MrqG4uYhSAkQ9" style="color: #009645;">Rhythm Niseko Rental Shop</a></p>
+    </div>
 
-                    <div style="background-color: #f8f9fa; border-radius: 6px; padding: 15px; margin-top: 20px;">
-                        <h4 style="color: #333333;">🔄 Cancellation Policy</h4>
-                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-                            <thead>
-                                <tr style="background-color: #f4f4f4;">
-                                    <th style="border: 1px solid #ddd; padding: 10px;">Cancellation Timing</th>
-                                    <th style="border: 1px solid #ddd; padding: 10px;">Refund Policy</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td style="border: 1px solid #ddd; padding: 10px;">More than 48 hours before rental</td>
-                                    <td style="border: 1px solid #ddd; padding: 10px;">Full refund provided</td>
-                                </tr>
-                                <tr>
-                                    <td style="border: 1px solid #ddd; padding: 10px;">Less than 48 hours before rental</td>
-                                    <td style="border: 1px solid #ddd; padding: 10px;">No cash refund – store credit issued for equal value (valid at participating stores in Japan for current season only)</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+    <!-- Payment Info -->
+    <div style="background-color: #fff3cd; border-radius: 6px; padding: 16px; margin-top: 24px; width: 100%;">
+        <h3 style="font-size: 16px; margin-bottom: 10px;">💳 Payment Information</h3>
+        <p><strong>Payment Due:</strong> 60 days before your check-in date</p>
+        <p>
+        <a href="{payment_link}" style="background-color: #ffc107; color: #000000; padding: 10px 20px; text-decoration: none; border-radius: 20px; font-weight: bold; display: inline-block; margin-top: 10px;">Complete Payment</a>
+        </p>
+        <p style="margin-top: 10px;">You can view your booking and make payments anytime using the link above.</p>
+    </div>
 
-                    <p style="margin-top: 20px;">We look forward to seeing you in Niseko!</p>
-                """, unsafe_allow_html=True)
+    <!-- Cancellation Policy -->
+    <div style="background-color: #f8f9fa; border-radius: 6px; padding: 16px; margin-top: 24px; width: 100%;">
+        <h3 style="font-size: 16px; margin-bottom: 10px;">Cancellation Policy</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <thead>
+            <tr style="background-color: #f4f4f4;">
+            <th style="border: 1px solid #ddd; padding: 10px; text-align: center;">Cancellation Timing</th>
+            <th style="border: 1px solid #ddd; padding: 10px; text-align: center;">Refund Policy</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+            <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">More than 48 hours before rental</td>
+            <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">Full refund provided</td>
+            </tr>
+            <tr>
+            <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">Less than 48 hours before rental</td>
+            <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">No cash refund – store credit issued for equal value (valid at participating stores in Japan for current season only)</td>
+            </tr>
+        </tbody>
+        </table>
+    </div>
+
+    <p style="margin-top: 20px;">We look forward to seeing you in Niseko!</p>
+    </div>
+    """
+                st.markdown(html_content, unsafe_allow_html=True)
+
 
 
     def _render_ski_rental_table(self, rental):
