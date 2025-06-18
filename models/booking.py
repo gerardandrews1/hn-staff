@@ -81,6 +81,9 @@ class Booking:
 
         # Look for ski rental bookings
         self.parse_ski_rental_bookings()
+
+        # Look for Explore transfer bookings
+        self.parse_explore_transfer_bookings()
         
         # Create links based on parsed data
         if self.booking_id:
@@ -812,22 +815,26 @@ class Booking:
             gs_upsell_expander = st.expander("GS Upsell", expanded=False)
             with gs_upsell_expander:
                 st.write(f"""
-                **Enhance Your Stay with Guest Services**  
+Accommodation is booked - now add your extras!""") 
                 
-                Make your Niseko trip even better! 
-                Add convenient transfers, expert lessons, or 
-                top-quality rentals to your booking.  
+                st.write("""
+- Equipment Rentals – Premium gear, early bird rates available  
+- Airport Transfers – Door-to-door from New Chitose Airport
+- Ski/Snowboard Lessons – Certified instructors, all skill levels
+- Lift Passes - Delivered to your door
+""")
                 
-                Popular Services:
-                - Private Transfers: Stress-free airport-to-accommodation transportation  
-                - Ski & Snowboard Lessons: Personalized instruction for all skill levels  
-                - Equipment Rentals: Premium skis, snowboards, and accessories  
-                
-                <a href='{self.gsg_link}'> Book Your Services Here</a>  
-                
-                Additional Information: Browse our <a href='{self.service_guide}'> Guest Services Guide</a> for services, pricing, and availability.
+                st.write(f"""
 
-                Book your extras early - popular services fill up fast!
+<a href='{self.gsg_link}'> Book Your Extras Now --> </a>  
+
+**Login Details**  
+Email: {self.guest_email}  
+Booking ID: {self.eId} 
+
+Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full pricing and service details.
+
+*Book your extras early - popular services fill up fast!*
                 """,
                     unsafe_allow_html=True)
         except TypeError:
@@ -1165,7 +1172,7 @@ class Booking:
                 
                 Please take a moment to review your booking confirmation below to ensure everything is correct.<br>
                 
-                <strong>To secure your booking a 20% non-refundable deposit is required within 5 days</strong>
+                <strong>To secure your booking a 20% non-refundable deposit is required within 3 days</strong>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -1177,7 +1184,7 @@ class Booking:
                 <div class="booking-text-content">
                 <strong>Payment Information</strong>
                 <ul>
-                    <li>Initial deposit: 20% (due within 5 days)</li>
+                    <li>Initial deposit: 20% (due within 3 days)</li>
                     <li>Final balance: Due 60 days before check-in</li>
                 </ul>
                 
@@ -1476,52 +1483,52 @@ class Booking:
     Your booking is confirmed – please review the details below.
     </p>
 
-    <!-- Booking Details -->
-    <div style="background-color: #eaf6ff; border-left: 4px solid #009645; padding: 16px; border-radius: 6px; width: 100%;">
-        <h3 style="font-size: 16px; margin-bottom: 10px; color: #009645;">📋 Your Booking Details</h3>
-        <div style="background-color: #009645; color: white; padding: 10px 16px; display: inline-block; border-radius: 4px;">
-        <strong>Rental Booking Reference: {rental_id}</strong>
-        </div>
-        <p style="margin-top: 16px;">Please check your booking details in the attached PDF.</p>
-        <p style="margin: 8px 0;"><strong>Pickup Time:</strong> From 1:00 PM the day before your rental start date</p>
-        <p style="margin: 8px 0;"><strong>Location:</strong> <a href="https://maps.app.goo.gl/wix4MrqG4uYhSAkQ9" style="color: #009645;">Rhythm Niseko Rental Shop</a></p>
+<!-- Booking Details -->
+<div style="background-color: #eaf6ff; border-left: 4px solid #009645; padding: 16px; border-radius: 6px; width: 100%;">
+    <h3 style="font-size: 16px; margin-bottom: 10px; color: #009645;">📋 Your Booking Details</h3>
+    <div style="background-color: #009645; color: white; padding: 10px 16px; display: inline-block; border-radius: 4px;">
+    <strong>Rental Booking Reference: {rental_id}</strong>
     </div>
+    <p style="margin-top: 16px;">Please check your booking details in the attached PDF.</p>
+    <p style="margin: 8px 0;"><strong>Pickup Time:</strong> From 1:00 PM the day before your rental start date</p>
+    <p style="margin: 8px 0;"><strong>Location:</strong> <a href="https://maps.app.goo.gl/wix4MrqG4uYhSAkQ9" style="color: #009645;">Rhythm Niseko Rental Shop</a></p>
+</div>
 
-    <!-- Payment Info -->
-    <div style="background-color: #fff3cd; border-radius: 6px; padding: 16px; margin-top: 24px; width: 100%;">
-        <h3 style="font-size: 16px; margin-bottom: 10px;">💳 Payment Information</h3>
-        <p><strong>Payment Due:</strong> 60 days before your check-in date</p>
-        <p>
-        <a href="{payment_link}" style="background-color: #ffc107; color: #000000; padding: 10px 20px; text-decoration: none; border-radius: 20px; font-weight: bold; display: inline-block; margin-top: 10px;">Complete Payment</a>
-        </p>
-        <p style="margin-top: 10px;">You can view your booking and make payments anytime using the link above.</p>
-    </div>
+<!-- Payment Info -->
+<div style="background-color: #fff3cd; border-radius: 6px; padding: 16px; margin-top: 24px; width: 100%;">
+    <h3 style="font-size: 16px; margin-bottom: 10px;">💳 Payment Information</h3>
+    <p><strong>Payment Due:</strong> 60 days before your check-in date</p>
+    <p>
+    <a href="{payment_link}" style="background-color: #ffc107; color: #000000; padding: 10px 20px; text-decoration: none; border-radius: 20px; font-weight: bold; display: inline-block; margin-top: 10px;">Complete Payment</a>
+    </p>
+    <p style="margin-top: 10px;">You can view your booking and make payments anytime using the link above.</p>
+</div>
 
-    <!-- Cancellation Policy -->
-    <div style="background-color: #f8f9fa; border-radius: 6px; padding: 16px; margin-top: 24px; width: 100%;">
-        <h3 style="font-size: 16px; margin-bottom: 10px;">Cancellation Policy</h3>
-        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-        <thead>
-            <tr style="background-color: #f4f4f4;">
-            <th style="border: 1px solid #ddd; padding: 10px; text-align: center;">Cancellation Timing</th>
-            <th style="border: 1px solid #ddd; padding: 10px; text-align: center;">Refund Policy</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-            <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">More than 48 hours before rental</td>
-            <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">Full refund provided</td>
-            </tr>
-            <tr>
-            <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">Less than 48 hours before rental</td>
-            <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">No cash refund – store credit issued for equal value (valid at participating stores in Japan for current season only)</td>
-            </tr>
-        </tbody>
-        </table>
-    </div>
+<!-- Cancellation Policy -->
+<div style="background-color: #f8f9fa; border-radius: 6px; padding: 16px; margin-top: 24px; width: 100%;">
+    <h3 style="font-size: 16px; margin-bottom: 10px;">Cancellation Policy</h3>
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+    <thead>
+        <tr style="background-color: #f4f4f4;">
+        <th style="border: 1px solid #ddd; padding: 10px; text-align: center;">Cancellation Timing</th>
+        <th style="border: 1px solid #ddd; padding: 10px; text-align: center;">Refund Policy</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+        <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">More than 48 hours before rental</td>
+        <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">Full refund provided</td>
+        </tr>
+        <tr>
+        <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">Less than 48 hours before rental</td>
+        <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">No cash refund – store credit issued for equal value (valid at participating stores in Japan for current season only)</td>
+        </tr>
+    </tbody>
+    </table>
+</div>
 
-    <p style="margin-top: 20px;">We look forward to seeing you in Niseko!</p>
-    </div>
+<p style="margin-top: 20px;">We look forward to seeing you in Niseko!</p>
+</div>
     """
                 st.markdown(html_content, unsafe_allow_html=True)
 
@@ -1581,3 +1588,245 @@ class Booking:
         """Display a summary of ski rentals in the main booking view"""
         # Remove this method entirely - we don't want the details in the left column
         pass
+
+
+    def parse_explore_transfer_bookings(self):
+        """Parse Explore transfer bookings - one email per transfer booking"""
+        self.explore_transfers = []
+        
+        for booking in self.booking_dict:
+            if booking.get("bookingType") == "SERVICE":
+                # Check if this is an Explore Transfers & Tours service provider
+                service_provider = booking.get("serviceProvider", {}).get("serviceProviderName", "")
+                
+                if "explore" in service_provider.lower():
+                    # Create one transfer entry per Explore booking
+                    transfer_entry = {
+                        'booking_id': booking.get("eId", ""),
+                        'service_provider': service_provider,
+                        'booking_notes': booking.get("notes", ""),
+                        'items': [],
+                        'pickup_locations': []
+                    }
+                    
+                    # Parse the notes to extract important information
+                    notes = booking.get("notes", "")
+                    if notes:
+                        # Extract information from notes
+                        lines = notes.split('\n')
+                        transfer_entry['google_maps_link'] = ""
+                        transfer_entry['contact_info'] = {}
+                        
+                        for line in lines:
+                            if "google.com/maps" in line:
+                                # Extract Google Maps link
+                                import re
+                                url_match = re.search(r'https://[^\s]+', line)
+                                if url_match:
+                                    transfer_entry['google_maps_link'] = url_match.group(0)
+                            elif "LAST NAME:" in line:
+                                transfer_entry['contact_info']['last_name'] = line.split(":", 1)[1].strip()
+                            elif "FIRST NAME:" in line:
+                                transfer_entry['contact_info']['first_name'] = line.split(":", 1)[1].strip()
+                            elif "EMAIL:" in line:
+                                transfer_entry['contact_info']['email'] = line.split(":", 1)[1].strip()
+                            elif "TELEPHONE:" in line:
+                                transfer_entry['contact_info']['phone'] = line.split(":", 1)[1].strip()
+                    
+                    # Get all transfer items
+                    for item in booking.get("items", []):
+                        transfer_item = {
+                            'service_name': item.get("service", {}).get("serviceName", ""),
+                            'category': item.get("category", ""),
+                            'parent_category': item.get("parentCategory", ""),
+                            'price': item.get("priceRetail", 0),
+                            'start_date': item.get("startDate", ""),
+                            'end_date': item.get("endDate", "")
+                        }
+                        
+                        # Parse transfer type and route from service name
+                        service_name = transfer_item['service_name']
+                        if "Airport(CTS) to Niseko" in service_name:
+                            transfer_item['route'] = "Airport → Niseko"
+                            transfer_item['pickup_location'] = "New Chitose Airport"
+                        elif "Niseko to Airport(CTS)" in service_name:
+                            transfer_item['route'] = "Niseko → Airport"
+                            transfer_item['pickup_location'] = "Your Accommodation"
+                        else:
+                            # Handle other routes
+                            transfer_item['route'] = service_name.replace("Private Transfer - ", "")
+                            transfer_item['pickup_location'] = "TBD"
+                        
+                        transfer_entry['items'].append(transfer_item)
+                    
+                    # Calculate total price
+                    transfer_entry['total_price'] = sum(item['price'] for item in transfer_entry['items'])
+                    
+                    self.explore_transfers.append(transfer_entry)
+
+    def has_explore_transfers(self):
+        """Check if this booking includes Explore transfers"""
+        if not hasattr(self, 'explore_transfers'):
+            self.parse_explore_transfer_bookings()
+        return len(self.explore_transfers) > 0
+
+    def write_explore_transfer_confirmation_emails(self):
+        """Generate styled transfer confirmation emails – one per Explore booking"""
+        if not self.has_explore_transfers():
+            return
+
+        for transfer in self.explore_transfers:
+            with st.expander(f"Explore Transfer Confirmation #{transfer['booking_id']}", expanded=False):
+                transfer_id = transfer['booking_id']
+                payment_link = self.payment_link if hasattr(self, 'payment_link') else "#"
+                guest_name = self.given_name
+                
+                # Build the transfer details table
+                transfer_table_html = self._build_explore_transfer_table(transfer)
+                
+                html_content = f"""
+<div style="max-width: 720px; margin: 0 auto; font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+
+<!-- Header with Logo -->
+<div style="margin-bottom: 40px; text-align: center;">
+<div style="display: inline-block; background-color: #000; border-radius: 50%; padding: 20px;">
+<div style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center;">
+<svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+<circle cx="40" cy="40" r="30" fill="#87CEEB"/>
+<ellipse cx="40" cy="50" rx="26" ry="12" fill="#90EE90"/>
+<path d="M20 45 L30 30 L40 35 L50 25 L60 45 Z" fill="#2F4F2F"/>
+<text x="40" y="65" font-family="Arial, sans-serif" font-size="8" font-weight="bold" fill="white" text-anchor="middle">EXPLORE</text>
+<text x="40" y="73" font-family="Arial, sans-serif" font-size="6" font-weight="bold" fill="white" text-anchor="middle">NISEKO</text>
+</svg>
+</div>
+</div>
+<h1 style="color: #333; margin: 20px 0 0 0; font-size: 24px;">Explore Niseko Transfer Confirmation</h1>
+</div>
+
+<p>Hi {guest_name},</p>
+<p>Thank you for booking your transfers with Explore Niseko through Holiday Niseko! Your booking is confirmed.</p>
+
+<!-- Booking Details Table -->
+<div style="margin: 20px 0 0 0; padding: 0 20px 0 25px; border-left: 8px solid #27ae60;">
+<h3 style="color: #333; margin: 15px 0; font-size: 16px;">Transfer Details</h3>
+{transfer_table_html}
+</div>
+
+<!-- Payment Section -->
+<div style="margin: 35px 0; padding: 20px; background-color: #f8f9fa; border-radius: 6px;">
+<h3 style="font-size: 16px; margin-bottom: 10px;">💳 Payment Information</h3>
+<p><strong>Payment Due:</strong> 60 days before your check-in date</p>
+<p>
+<a href="{payment_link}" style="background: #1e90ff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; margin-top: 10px;">Make a payment / View invoices</a>
+</p>
+</div>
+
+<!-- Transfer Instructions -->
+<div style="margin: 35px 0; padding: 20px 0 0 0; border-top: 1px solid #e9ecef;">
+<h3 style="color: #333; margin-top: 0; font-size: 16px;">Transfer Instructions</h3>
+<div style="display: flex; gap: 30px; margin-top: 20px;">
+<div style="flex: 1;">
+<h4 style="color: #333; margin: 0 0 8px 0; font-size: 14px;">✈️ Airport Pickup</h4>
+<p style="margin: 0; font-size: 13px;">Your driver will be waiting at the arrival gate with a sign displaying your name. Can't find them?<br>Call <strong>(+81) 050-5309-6905</strong></p>
+</div>
+<div style="flex: 1;">
+<h4 style="color: #333; margin: 0 0 8px 0; font-size: 14px;">🏠 From Your Accommodation</h4>
+<p style="margin: 0; font-size: 13px;">Your driver will be waiting outside your accommodation at the scheduled pickup time.</p>
+</div>
+</div>
+</div>
+
+<!-- Cancellation Policy -->
+<div style="margin: 35px 0 0 0; padding: 20px 0 0 0; border-top: 1px solid #e9ecef;">
+<h3 style="color: #333; margin-top: 0; font-size: 16px;">📋 Cancellation Policy</h3>
+<table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 13px;">
+<tr>
+<th style="color: #333; padding: 10px 8px; text-align: left; font-weight: bold; font-size: 12px; border-bottom: 2px solid #333;">Time until Transfer</th>
+<th style="color: #333; padding: 10px 8px; text-align: left; font-weight: bold; font-size: 12px; border-bottom: 2px solid #333;">Policy</th>
+</tr>
+<tr>
+<td style="padding: 10px 8px; border-bottom: 1px solid #ecf0f1; font-size: 12px;">More than 72 hours prior</td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #ecf0f1; font-size: 12px;">Full refund given</td>
+</tr>
+<tr>
+<td style="padding: 10px 8px; border-bottom: 1px solid #ecf0f1; font-size: 12px;">72 to 48 hours prior</td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #ecf0f1; font-size: 12px;">50% refund - ¥5000 administration fee</td>
+</tr>
+<tr>
+<td style="padding: 10px 8px; border-bottom: 1px solid #ecf0f1; font-size: 12px;">Less than 48 hours prior</td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #ecf0f1; font-size: 12px;">No refund given</td>
+</tr>
+</table>
+</div>
+
+<!-- Footer -->
+<div style="margin-top: 40px;">
+<h4 style="color: #333; margin: 0 0 10px 0; font-size: 14px;">✈️ Flight Delays</h4>
+<p style="margin: 0; font-size: 13px; color: #666;">Your driver will wait for delayed flights when possible. In cases where it is not, alternative transportation arrangements may be needed, as such travel insurance is recommended.</p>
+
+<p style="margin: 20px 0; font-size: 13px; color: #666;">We look forward to seeing you in Niseko!</p>
+
+<div style="margin-top: 30px;">
+<p style="margin: 5px 0; font-size: 13px;">Kind regards,</p>
+<p style="margin: 15px 0 5px 0; font-size: 14px; font-weight: bold;">The Explore Niseko Team</p>
+<p style="margin: 0; font-size: 13px; color: #666;">Holiday Niseko Guest Services</p>
+</div>
+</div>
+</div>
+    """
+                st.markdown(html_content, unsafe_allow_html=True)
+
+    def _build_explore_transfer_table(self, transfer):
+        """Build the HTML table for transfer details"""
+        table_html = """
+<table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 13px;">
+<thead>
+<tr>
+<th style="color: #333; padding: 10px 8px; text-align: left; font-weight: bold; font-size: 12px; border-bottom: 2px solid #333; width: 20%;">Date & Route</th>
+<th style="color: #333; padding: 10px 8px; text-align: left; font-weight: bold; font-size: 12px; border-bottom: 2px solid #333; width: 25%;">Pickup Location</th>
+<th style="color: #333; padding: 10px 8px; text-align: left; font-weight: bold; font-size: 12px; border-bottom: 2px solid #333; width: 20%;">Time</th>
+<th style="color: #333; padding: 10px 8px; text-align: left; font-weight: bold; font-size: 12px; border-bottom: 2px solid #333; width: 20%;">Vehicle</th>
+<th style="color: #333; padding: 10px 8px; text-align: left; font-weight: bold; font-size: 12px; border-bottom: 2px solid #333; width: 15%;">Price</th>
+</tr>
+</thead>
+<tbody>
+        """
+        
+        for item in transfer['items']:
+            # Format date
+            try:
+                transfer_date = pd.to_datetime(item['start_date'])
+                formatted_date = transfer_date.strftime('%b %d')
+            except:
+                formatted_date = item['start_date']
+            
+            # Determine pickup time based on route (you may need to adjust this based on actual data)
+            pickup_time = "TBD"  # This should come from the booking notes or another field
+            
+            table_html += f"""
+<tr>
+<td style="padding: 10px 8px; border-bottom: 1px solid #ecf0f1; vertical-align: top; font-size: 12px;">
+<span style="font-weight: bold; color: #333;">{formatted_date}</span>
+<div style="font-size: 11px; color: #666; margin-top: 2px;">{item['route']}</div>
+</td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #ecf0f1; vertical-align: top; font-size: 12px;">
+<span style="font-weight: bold; color: #333;">{item['pickup_location']}</span>
+</td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #ecf0f1; vertical-align: top; font-size: 12px;">
+<span style="font-weight: bold; color: #333;">{pickup_time}</span>
+</td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #ecf0f1; vertical-align: top; font-size: 12px;">
+<span style="font-weight: bold; color: #333;">Private Vehicle</span>
+</td>
+<td style="padding: 10px 8px; border-bottom: 1px solid #ecf0f1; vertical-align: top; font-size: 12px;">
+<span style="font-weight: bold; color: #333;">¥{item['price']:,.0f}</span>
+</td>
+</tr>
+            """
+        
+        table_html += """
+</tbody>
+</table>
+        """
+        
+        return table_html

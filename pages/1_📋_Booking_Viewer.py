@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # pages/booking_viewer.py
 
-
 import streamlit as st
 import json
 import datetime
@@ -9,6 +8,7 @@ import pandas as pd
 
 from models.booking import Booking
 from services.api_list_booking import call_api
+from ui.recent_bookings import RecentBookingsManager
 
 # Set page config
 st.set_page_config(
@@ -29,25 +29,6 @@ def write_links_box():
             st.markdown(f"[Niseko Wine and Dine link]({wine_dine_link})")
             st.markdown(f"[Rhythm referral link]({rhythm_referral_link})")
             st.markdown(f"[Guest Service Guide link]({gsg_link})")
-
-# def apply_custom_styles():
-#     """Apply custom CSS styling to the page"""
-#     st.markdown(
-#         """
-#         <style>
-#         footer {display: none}
-#         .block-container {
-#             padding-top: 2rem;
-#             padding-bottom: 2rem;
-#         }
-#         .stButton button {
-#             width: 100%;
-#             white-space: pre-wrap !important;
-#         }
-#         </style>
-#         """, 
-#         unsafe_allow_html=True
-#     )
 
 def apply_custom_styles():
     """Apply custom CSS styling to the page"""
@@ -143,6 +124,7 @@ def apply_custom_styles():
             min-width: 60px;
             max-width: 120px;
         }
+        
         /* Add these styles to fix text wrapping */
         .email-subject {
             white-space: normal;
@@ -150,13 +132,46 @@ def apply_custom_styles():
             max-width: 100%;
             overflow-wrap: break-word;
         }
+        
+        /* Recent bookings card styling */
+        .recent-booking-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            background-color: #fafafa;
+        }
+        
+        .recent-booking-header {
+            font-weight: bold;
+            color: #1E3A8A;
+            margin-bottom: 4px;
+        }
+        
+        .recent-booking-details {
+            font-size: 12px;
+            color: #6B7280;
+        }
+        
+        .source-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            color: white;
+            display: inline-block;
+            margin-left: 5px;
+        }
+        
+        .source-airbnb { background-color: #FF5A5F; }
+        .source-booking { background-color: #003580; }
+        .source-expedia { background-color: #00355F; }
+        .source-jalan { background-color: #FF0000; }
+        .source-bookpay { background-color: #00A699; }
+        .source-staff { background-color: #6B5B95; }
         </style>
         """, 
         unsafe_allow_html=True
-        )
-
-
-
+    )
 
 def fetch_booking_data(booking_id):
     """
@@ -241,9 +256,6 @@ def fetch_booking_data(booking_id):
         return None
 
 
-# Replace your existing display_booking_details function with this:
-# Replace your display_booking_details function with this:
-
 def display_booking_details(booking):
     """Display booking details in a three-column layout with better spacing"""
     # Process room data first without displaying (just to set variables)
@@ -302,6 +314,11 @@ def display_booking_details(booking):
                     st.write("---")
                     
                     booking.write_ski_rental_confirmation_emails()
+
+                 # Add Explore transfer emails if they exist
+                if booking.has_explore_transfers():
+                    st.write("---")
+                    booking.write_explore_transfer_confirmation_emails()
             
             with email_tabs[2]:  # OTA Emails
                 booking.write_first_ota_email()
@@ -338,11 +355,15 @@ def process_room_data(booking):
         f"{booking.accom_checkin} - {booking.accom_checkout} "
         f"({booking.nights} nights) {booking.guests} guests"
     )
-            
+
+
 def main():
     """Main function to run the booking viewer page"""
     st.title(" ")
     apply_custom_styles()
+    
+    # Initialize recent bookings manager
+    recent_manager = RecentBookingsManager()
     
     # Create a search column layout
     search_col1, search_col2, blank_space = st.columns([1, 0.5, 3])
@@ -395,7 +416,7 @@ def main():
         # Place clear button in the same column
         clear_button = st.button("Clear", use_container_width=True)
     
-    # Create a sidebar for recent bookings
+    # Create a sidebar for recent bookings (user searched bookings)
     with st.sidebar:
         st.header("Recent Searches")
         
@@ -440,6 +461,9 @@ def main():
                 # Add a small spacer between buttons
                 st.write("")
 
+    # Add the API-based recent bookings section to sidebar - REMOVED
+    # add_recent_bookings_to_sidebar()
+
     with st.sidebar:
         write_links_box()
     
@@ -477,13 +501,18 @@ def main():
             # Display booking details
             display_booking_details(booking)
     
-    # If no search history, display a welcome message
+    # If no search history, display a welcome message with recent bookings
     if "last_search" not in st.session_state:
         st.write("Enter a booking ID to view details")
         
-        # Add a sample/recent bookings section (could be populated from a database)
-        with st.expander("Recent Bookings"):
-            st.info("Recent bookings feature coming soon")
+        # Display recent bookings from API in main area as a helpful starting point
+        st.write("---")
+        recent_manager.display_recent_bookings_section(location="main")
+    else:
+        # Also show recent bookings below the booking details when a booking is loaded
+        st.write("---")
+        # st.write("### Other Recent Bookings")
+        recent_manager.display_recent_bookings_section(location="main_bottom")
 
 if __name__ == "__main__":
     main()
