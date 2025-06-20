@@ -89,12 +89,13 @@ class RecentBookingsManager:
                 st.session_state.recent_bookings_last_refresh = datetime.datetime.now()
                 st.session_state.recent_bookings_filter = filter_type
                 
-                # Show success message with count
+                # Show success message with count AFTER filtering
                 booking_count = len(result.get('bookings', []))
                 if booking_count == 0:
                     st.info(f"No bookings found. {result.get('message', '')}")
                 else:
-                    st.success(f"Loaded {booking_count} bookings successfully!")
+                    # Don't show the raw API count, we'll show filtered count in stats instead
+                    pass
             
             return result
             
@@ -301,12 +302,42 @@ class RecentBookingsManager:
         
         return "Book & Pay"
     
+    def _filter_created_last_24_hours(self, parsed_bookings):
+        """Filter bookings to only show those created in the last 24 hours"""
+        # Get current time in UTC (to match API data timezone)
+        now_utc = datetime.datetime.utcnow()
+        cutoff_time_utc = now_utc - datetime.timedelta(hours=24)
+        filtered = []
+        
+        # Shorter debug info
+        st.write(f"🕐 Filtering for last 24h (after {cutoff_time_utc.strftime('%m/%d %H:%M')} UTC)")
+        
+        for booking in parsed_bookings:
+            created_date = booking['raw_data'].get('booking', {}).get('createdDate', '')
+            if created_date:
+                try:
+                    # Parse the creation date (this preserves timezone info)
+                    created_dt = pd.to_datetime(created_date)
+                    
+                    # Convert to timezone-naive UTC for comparison
+                    if created_dt.tz is not None:
+                        created_dt_utc = created_dt.tz_convert('UTC').tz_localize(None)
+                    else:
+                        created_dt_utc = created_dt
+                    
+                    # Only include if created within last 24 hours
+                    if created_dt_utc.to_pydatetime() >= cutoff_time_utc:
+                        filtered.append(booking)
+                        
+                except Exception as e:
+                    pass  # Skip bookings with invalid dates
+        
+        return filtered
+    
     def _filter_created_today(self, parsed_bookings):
         """Filter bookings to only show those created today"""
         today = datetime.date.today()
         filtered = []
-        
-        st.write(f"DEBUG: Today is {today}")
         
         for booking in parsed_bookings:
             created_date = booking['raw_data'].get('booking', {}).get('createdDate', '')
@@ -319,23 +350,15 @@ class RecentBookingsManager:
                     
                     if created_date_jst == today:
                         filtered.append(booking)
-                        # st.write(f"DEBUG: Including booking {booking.get('e_id')} created {created_date_jst}")
-                    else:
-                        pass
-                        # st.write(f"DEBUG: Excluding booking {booking.get('e_id')} created {created_date_jst} (not today)")
                 except Exception as e:
-                    st.write(f"DEBUG: Failed to parse date {created_date}: {e}")
+                    pass  # Skip bookings with invalid dates
         
-        # st.write(f"DEBUG: Filtered {len(filtered)} bookings created today from {len(parsed_bookings)} total")
         return filtered
     
     def _filter_created_last_n_days(self, parsed_bookings, days):
         """Filter bookings to only show those created in the last N days"""
         cutoff_date = datetime.date.today() - datetime.timedelta(days=days-1)
-        today = datetime.date.today()
         filtered = []
-        
-        # st.write(f"DEBUG: Looking for bookings created between {cutoff_date} and {today} (last {days} days)")
         
         for booking in parsed_bookings:
             created_date = booking['raw_data'].get('booking', {}).get('createdDate', '')
@@ -348,22 +371,16 @@ class RecentBookingsManager:
                     
                     if created_date_jst >= cutoff_date:
                         filtered.append(booking)
-                        # st.write(f"DEBUG: Including booking {booking.get('e_id')} created {created_date_jst}")
-                    else:
-                        pass
-                        # st.write(f"DEBUG: Excluding booking {booking.get('e_id')} created {created_date_jst} (before {cutoff_date})")
                 except Exception as e:
-                    # st.write(f"DEBUG: Failed to parse date {created_date}: {e}")
-                    pass
+                    pass  # Skip bookings with invalid dates
         
-        st.write(f"DEBUG: Filtered {len(filtered)} bookings created in last {days} days from {len(parsed_bookings)} total")
         return filtered
     
     def display_recent_bookings_section(self, location="main"):
         """Display the recent bookings section in the sidebar or main area"""
         
         # Compact header with controls in one row
-        col1, col2, col3, col4 = st.columns([2, 1, 1, 0.8])
+        col1, col2, col3 = st.columns([2, 1, 1.5])
         
         with col1:
             st.markdown("### Recent Bookings")
@@ -371,28 +388,79 @@ class RecentBookingsManager:
         with col2:
             filter_option = st.selectbox(
                 "Period:",
-                ["Created Today", "Created Last 3 days", "Created Last 7 days", "All Modified Today", "Custom range"],
-                index=0,  # Default to "Created Today"
+                ["Last 24 hours", "2 days", "3 days", "5 days", "7 days", "Custom"],
+                index=0,  # Default to "Last 24 hours"
                 key=f"recent_filter_select_{location}",
                 label_visibility="collapsed"
             )
         
+        # Custom date range if selected - only show when needed
+        if filter_option == "Custom":
+            date_col1, date_col2 = st.columns(2)
+            with date_col1:
+                start_date = st.date_input(
+                    "Start date",
+                    value=datetime.date.today() - datetime.timedelta(days=7),
+                    key=f"recent_start_date_{location}"
+                )
+            with date_col2:
+                end_date = st.date_input(
+                    "End date", 
+                    value=datetime.date.today(),
+                    key=f"recent_end_date_{location}"
+                )
+        else:
+            start_date = end_date = None
+        
+        # ALWAYS fetch data when filter changes - removed refresh button logic
+        current_filter_key = f'{filter_option}_{start_date}_{end_date}'
+        last_filter_key = st.session_state.get(f'last_filter_key_{location}', '')
+        
+        if current_filter_key != last_filter_key:
+            st.session_state[f'last_filter_key_{location}'] = current_filter_key
+            
+            with st.spinner("Loading recent bookings..."):
+                if filter_option == "Last 24 hours":
+                    result = self.fetch_recent_bookings("today")
+                elif filter_option == "2 days":
+                    result = self.fetch_recent_bookings("last_n_days", custom_days=2)
+                elif filter_option == "3 days":
+                    result = self.fetch_recent_bookings("last_n_days", custom_days=3)
+                elif filter_option == "5 days":
+                    result = self.fetch_recent_bookings("last_n_days", custom_days=5)
+                elif filter_option == "7 days":
+                    result = self.fetch_recent_bookings("last_n_days", custom_days=7)
+                elif filter_option == "Custom" and start_date and end_date:
+                    result = self.fetch_recent_bookings(
+                        "date_range",
+                        start_date=start_date.strftime('%Y-%m-%d'),
+                        end_date=end_date.strftime('%Y-%m-%d')
+                    )
+                else:
+                    result = {'bookings': [], 'success': False, 'error': 'Invalid selection'}
+                
+                if not result.get('success', True):
+                    st.error(f"Error loading bookings: {result.get('error', 'Unknown error')}")
+                    return
+        
+        # NOW calculate stats AFTER data is loaded
         with col3:
             # Show compact stats in the header including totals
             if st.session_state.recent_bookings_data:
                 bookings = st.session_state.recent_bookings_data
                 parsed_bookings = [self.parse_booking_summary(booking) for booking in bookings]
                 
-                # Filter bookings based on selection
-                if filter_option.startswith("Created"):
-                    if "Today" in filter_option:
-                        filtered_bookings = self._filter_created_today(parsed_bookings)
-                    elif "3 days" in filter_option:
-                        filtered_bookings = self._filter_created_last_n_days(parsed_bookings, 3)
-                    elif "7 days" in filter_option:
-                        filtered_bookings = self._filter_created_last_n_days(parsed_bookings, 7)
-                    else:
-                        filtered_bookings = parsed_bookings
+                # Filter bookings based on selection - all options now filter by creation date
+                if filter_option == "Last 24 hours":
+                    filtered_bookings = self._filter_created_last_24_hours(parsed_bookings)
+                elif filter_option == "2 days":
+                    filtered_bookings = self._filter_created_last_n_days(parsed_bookings, 2)
+                elif filter_option == "3 days":
+                    filtered_bookings = self._filter_created_last_n_days(parsed_bookings, 3)
+                elif filter_option == "5 days":
+                    filtered_bookings = self._filter_created_last_n_days(parsed_bookings, 5)
+                elif filter_option == "7 days":
+                    filtered_bookings = self._filter_created_last_n_days(parsed_bookings, 7)
                 else:
                     filtered_bookings = parsed_bookings
                 
@@ -414,64 +482,10 @@ class RecentBookingsManager:
                 service_count = len(service_bookings)
                 
                 st.write(f"📊 {total} total ({active}A, {cancelled}C)")
-                st.write(f"🏠 {accom_count} (¥{accom_total:,.0f}) | 🔧 {service_count} (¥{service_total:,.0f})")
+                st.write(f"🏠 {accom_count} (¥{accom_total:,.0f}) | 🚌 {service_count} (¥{service_total:,.0f})")
             else:
+                st.write("📊 No data")
                 st.write("")
-        
-        with col4:
-            refresh_button = st.button("🔄", key=f"refresh_recent_{location}", help="Refresh bookings")
-        
-        # Custom date range if selected - only show when needed
-        if filter_option == "Custom range":
-            date_col1, date_col2 = st.columns(2)
-            with date_col1:
-                start_date = st.date_input(
-                    "Start date",
-                    value=datetime.date.today() - datetime.timedelta(days=7),
-                    key=f"recent_start_date_{location}"
-                )
-            with date_col2:
-                end_date = st.date_input(
-                    "End date", 
-                    value=datetime.date.today(),
-                    key=f"recent_end_date_{location}"
-                )
-        else:
-            start_date = end_date = None
-        
-        # Fetch data when refresh clicked or filter changed
-        should_fetch = (
-            refresh_button or 
-            st.session_state.recent_bookings_last_refresh is None or
-            filter_option != st.session_state.get(f'last_filter_option_{location}', '')
-        )
-        
-        if should_fetch:
-            st.session_state[f'last_filter_option_{location}'] = filter_option
-            
-            with st.spinner("Loading recent bookings..."):
-                if filter_option == "Created Today":
-                    result = self.fetch_recent_bookings("today")
-                elif filter_option == "Created Last 3 days":
-                    # Need to fetch data for last 3 days from API
-                    result = self.fetch_recent_bookings("last_n_days", custom_days=3)
-                elif filter_option == "Created Last 7 days":
-                    # Need to fetch data for last 7 days from API
-                    result = self.fetch_recent_bookings("last_n_days", custom_days=7)
-                elif filter_option == "All Modified Today":
-                    result = self.fetch_recent_bookings("today")
-                elif filter_option == "Custom range" and start_date and end_date:
-                    result = self.fetch_recent_bookings(
-                        "date_range",
-                        start_date=start_date.strftime('%Y-%m-%d'),
-                        end_date=end_date.strftime('%Y-%m-%d')
-                    )
-                else:
-                    result = {'bookings': [], 'success': False, 'error': 'Invalid selection'}
-                
-                if not result.get('success', True):
-                    st.error(f"Error loading bookings: {result.get('error', 'Unknown error')}")
-                    return
         
         # Display bookings
         self.display_bookings_list(location)
@@ -493,8 +507,42 @@ class RecentBookingsManager:
             st.info("No bookings found for the selected criteria.")
             return
         
+        # Remove duplicates based on unique booking ID (bookingId, not eId)
+        seen_booking_ids = set()
+        unique_bookings = []
+        
+        for booking in parsed_bookings:
+            booking_id = booking.get('booking_id', '')  # Use bookingId instead of eId
+            if booking_id and booking_id not in seen_booking_ids:
+                seen_booking_ids.add(booking_id)
+                unique_bookings.append(booking)
+            elif not booking_id:  # Keep bookings without ID but don't dedupe them
+                unique_bookings.append(booking)
+        
+        parsed_bookings = unique_bookings
+        
         # Sort by created date (newest first) - use raw booking data for more reliable sorting
         parsed_bookings.sort(key=lambda x: x['raw_data'].get('booking', {}).get('createdDate', ''), reverse=True)
+        
+        # Show count info to help debug any missing rows
+        total_count = len(parsed_bookings)
+        active_count = len([b for b in parsed_bookings if b['is_active']])
+        cancelled_count = total_count - active_count
+        st.write(f"**Displaying {total_count} booking(s): {active_count} active, {cancelled_count} cancelled**")
+        
+        # If there are many bookings, offer to limit display for performance
+        display_limit = None
+        if total_count > 50:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.warning(f"Large number of bookings ({total_count}). Showing first 50 for performance.")
+            with col2:
+                if st.button("Show All", key=f"show_all_{location}"):
+                    display_limit = total_count
+                else:
+                    display_limit = 50
+        else:
+            display_limit = total_count
         
         # Create DataFrame with button column - no extra spacing
         # Add CSS styling
@@ -520,7 +568,9 @@ class RecentBookingsManager:
                     st.markdown(f"**{header}**")
         
         # Create a container for the booking list with buttons
-        for i, booking in enumerate(parsed_bookings):
+        bookings_to_display = parsed_bookings[:display_limit] if display_limit else parsed_bookings
+        
+        for i, booking in enumerate(bookings_to_display):
             booking_id = booking.get('e_id', '') or booking.get('booking_id', '')
             
             # Create columns for each booking row
@@ -568,7 +618,7 @@ class RecentBookingsManager:
                 if booking_type == 'ACCOMMODATION':
                     st.write("🏠 ACCOM")
                 elif booking_type == 'SERVICE':
-                    st.write("🔧 SVC")
+                    st.write("🚌 SVC")
                 else:
                     st.write(booking_type)
             

@@ -818,15 +818,15 @@ class Booking:
 Accommodation is booked - now add your extras!""") 
                 
                 st.write("""
-- Equipment Rentals – Premium gear, early bird rates available  
-- Airport Transfers – Door-to-door from New Chitose Airport
-- Ski/Snowboard Lessons – Certified instructors, all skill levels
-- Lift Passes - Delivered to your door
+- Equipment Rentals – Early bird rates available  
+- Airport Transfers 
+- Ski/Snowboard Lessons
+- Lift Passes
 """)
                 
                 st.write(f"""
 
-<a href='{self.gsg_link}'> Book Your Extras Now --> </a>  
+<a href='{"https://holidayniseko.com/my-booking"}'> Book Your Extras Now **→** </a>  
 
 **Login Details**  
 Email: {self.guest_email}  
