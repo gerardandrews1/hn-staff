@@ -129,6 +129,20 @@ class RecentBookingsManager:
         # The actual booking data is nested under 'booking' key
         booking = booking_wrapper.get('booking', {})
         
+        # Extract invoice and payment data - corrected structure
+        invoice_payments = booking_wrapper.get('invoicePayments', [])
+        total_invoiced = 0
+        total_received = 0
+
+        for invoice_payment in invoice_payments:
+            # Get invoice amount (each item has both invoice and payment info)
+            invoice_amount = invoice_payment.get('invoiceAmount', 0) or 0
+            total_invoiced += invoice_amount
+            
+            # Get payment amount (it's at the same level, not nested)
+            payment_amount = invoice_payment.get('paymentAmount', 0) or 0
+            total_received += payment_amount
+        
         # Extract basic info
         booking_id = booking.get('bookingId', '')
         e_id = booking.get('eId', '')
@@ -261,6 +275,11 @@ class RecentBookingsManager:
             'booking_type': booking.get('bookingType', ''),
             'extent': booking.get('extent', ''),  # Add extent
             'service_name': service_name,
+            'amount_invoiced': f"¥{total_invoiced:,.0f}" if total_invoiced > 0 else "",
+            'amount_received': f"¥{total_received:,.0f}" if total_received > 0 else "",
+            'amount_invoiced_raw': total_invoiced,  # for calculations
+            'amount_received_raw': total_received,  # for calculations
+            'composite_key': f"{e_id}_{booking_id}",
             'raw_data': booking_wrapper
         }
     
@@ -304,51 +323,56 @@ class RecentBookingsManager:
     
     def _filter_created_last_24_hours(self, parsed_bookings):
         """Filter bookings to only show those created in the last 24 hours"""
-        # Get current time in UTC (to match API data timezone)
-        now_utc = datetime.datetime.utcnow()
-        cutoff_time_utc = now_utc - datetime.timedelta(hours=24)
+        # Get current time in JST
+        now_jst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+        cutoff_time_jst = now_jst - datetime.timedelta(hours=24)
         filtered = []
         
-        # Shorter debug info
-        st.write(f"🕐 Filtering for last 24h (after {cutoff_time_utc.strftime('%m/%d %H:%M')} UTC)")
-        
         for booking in parsed_bookings:
+            # Get the raw UTC date from the API data
             created_date = booking['raw_data'].get('booking', {}).get('createdDate', '')
             if created_date:
                 try:
-                    # Parse the creation date (this preserves timezone info)
-                    created_dt = pd.to_datetime(created_date)
+                    # Parse the creation date (API returns UTC like "2025-06-23T05:08:00.000+0000")
+                    created_dt_utc = pd.to_datetime(created_date).tz_localize(None)
                     
-                    # Convert to timezone-naive UTC for comparison
-                    if created_dt.tz is not None:
-                        created_dt_utc = created_dt.tz_convert('UTC').tz_localize(None)
-                    else:
-                        created_dt_utc = created_dt
+                    # Convert UTC to JST (add 9 hours)
+                    created_dt_jst = created_dt_utc + datetime.timedelta(hours=9)
                     
-                    # Only include if created within last 24 hours
-                    if created_dt_utc.to_pydatetime() >= cutoff_time_utc:
+                    # Only include if created within last 24 hours in JST
+                    if created_dt_jst >= cutoff_time_jst:
                         filtered.append(booking)
-                        
+                            
                 except Exception as e:
                     pass  # Skip bookings with invalid dates
         
         return filtered
     
     def _filter_created_today(self, parsed_bookings):
-        """Filter bookings to only show those created today"""
-        today = datetime.date.today()
+        """Filter bookings to only show those created today (in JST timezone)"""
+        # Use JST for "today" since that's your business timezone
+        now_jst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+        today_jst = now_jst.date()
         filtered = []
         
         for booking in parsed_bookings:
             created_date = booking['raw_data'].get('booking', {}).get('createdDate', '')
             if created_date:
                 try:
-                    # Parse the creation date (handle timezone properly)
+                    # Parse the creation date (API returns UTC)
                     created_dt = pd.to_datetime(created_date)
-                    # Convert to JST and get just the date
-                    created_date_jst = (created_dt + pd.Timedelta(hours=9)).date()
                     
-                    if created_date_jst == today:
+                    # Convert to timezone-naive UTC first
+                    if created_dt.tz is not None:
+                        created_dt_utc = created_dt.tz_convert('UTC').tz_localize(None)
+                    else:
+                        created_dt_utc = created_dt
+                    
+                    # Convert to JST and get just the date
+                    created_dt_jst = created_dt_utc + datetime.timedelta(hours=9)
+                    created_date_jst = created_dt_jst.date()
+                    
+                    if created_date_jst == today_jst:
                         filtered.append(booking)
                 except Exception as e:
                     pass  # Skip bookings with invalid dates
@@ -356,31 +380,41 @@ class RecentBookingsManager:
         return filtered
     
     def _filter_created_last_n_days(self, parsed_bookings, days):
-        """Filter bookings to only show those created in the last N days"""
-        cutoff_date = datetime.date.today() - datetime.timedelta(days=days-1)
+        """Filter bookings to only show those created in the last N days (in JST timezone)"""
+        # Use JST for date calculations since that's your business timezone
+        now_jst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+        cutoff_date_jst = (now_jst - datetime.timedelta(days=days-1)).date()
         filtered = []
         
         for booking in parsed_bookings:
             created_date = booking['raw_data'].get('booking', {}).get('createdDate', '')
             if created_date:
                 try:
-                    # Parse the creation date (handle timezone properly)
+                    # Parse the creation date (API returns UTC)
                     created_dt = pd.to_datetime(created_date)
-                    # Convert to JST and get just the date
-                    created_date_jst = (created_dt + pd.Timedelta(hours=9)).date()
                     
-                    if created_date_jst >= cutoff_date:
+                    # Convert to timezone-naive UTC first
+                    if created_dt.tz is not None:
+                        created_dt_utc = created_dt.tz_convert('UTC').tz_localize(None)
+                    else:
+                        created_dt_utc = created_dt
+                    
+                    # Convert to JST and get just the date
+                    created_dt_jst = created_dt_utc + datetime.timedelta(hours=9)
+                    created_date_jst = created_dt_jst.date()
+                    
+                    if created_date_jst >= cutoff_date_jst:
                         filtered.append(booking)
                 except Exception as e:
                     pass  # Skip bookings with invalid dates
-        
+            
         return filtered
     
     def display_recent_bookings_section(self, location="main"):
         """Display the recent bookings section in the sidebar or main area"""
         
         # Compact header with controls in one row
-        col1, col2, col3 = st.columns([2, 1, 1.5])
+        col1, col2, col3, col4 = st.columns([2, 1, 1.5, 1])
         
         with col1:
             st.markdown("### Recent Bookings")
@@ -391,6 +425,15 @@ class RecentBookingsManager:
                 ["Last 24 hours", "2 days", "3 days", "5 days", "7 days", "Custom"],
                 index=0,  # Default to "Last 24 hours"
                 key=f"recent_filter_select_{location}",
+                label_visibility="collapsed"
+            )
+        
+        with col4:
+            view_mode = st.selectbox(
+                "View:",
+                ["Buttons", "Table"],
+                index=0,
+                key=f"view_mode_{location}",
                 label_visibility="collapsed"
             )
         
@@ -421,7 +464,7 @@ class RecentBookingsManager:
             
             with st.spinner("Loading recent bookings..."):
                 if filter_option == "Last 24 hours":
-                    result = self.fetch_recent_bookings("today")
+                    result = self.fetch_recent_bookings("last_n_days", custom_days=2)  # Changed to get more data
                 elif filter_option == "2 days":
                     result = self.fetch_recent_bookings("last_n_days", custom_days=2)
                 elif filter_option == "3 days":
@@ -482,13 +525,16 @@ class RecentBookingsManager:
                 service_count = len(service_bookings)
                 
                 st.write(f"📊 {total} total ({active}A, {cancelled}C)")
-                st.write(f"🏠 {accom_count} (¥{accom_total:,.0f}) | 🚌 {service_count} (¥{service_total:,.0f})")
+                st.write(f"{accom_count} ACCOM (¥{accom_total:,.0f}) | {service_count} SVC (¥{service_total:,.0f})")
             else:
                 st.write("📊 No data")
                 st.write("")
         
-        # Display bookings
-        self.display_bookings_list(location)
+        # Display bookings based on view mode
+        if view_mode == "Sortable Table":
+            self.display_sortable_table(location)
+        else:
+            self.display_bookings_list(location)
     
     def display_bookings_list(self, location="main"):
         """Display the list of recent bookings as a DataFrame with clickable buttons"""
@@ -507,18 +553,26 @@ class RecentBookingsManager:
             st.info("No bookings found for the selected criteria.")
             return
         
-        # Remove duplicates based on unique booking ID (bookingId, not eId)
-        seen_booking_ids = set()
+        # Remove duplicates based on combination of eId and booking_id
+        seen_composite_keys = set()
         unique_bookings = []
         
         for booking in parsed_bookings:
-            booking_id = booking.get('booking_id', '')  # Use bookingId instead of eId
-            if booking_id and booking_id not in seen_booking_ids:
-                seen_booking_ids.add(booking_id)
+            # Use the composite key we created
+            composite_key = booking.get('composite_key', '')
+            
+            # Also create fallback composite key if not present
+            if not composite_key:
+                e_id = booking.get('e_id', '')
+                booking_id = booking.get('booking_id', '')
+                composite_key = f"{e_id}_{booking_id}"
+            
+            if composite_key and composite_key not in seen_composite_keys:
+                seen_composite_keys.add(composite_key)
                 unique_bookings.append(booking)
-            elif not booking_id:  # Keep bookings without ID but don't dedupe them
+            elif not composite_key:  # Keep bookings without composite key but don't dedupe them
                 unique_bookings.append(booking)
-        
+                
         parsed_bookings = unique_bookings
         
         # Sort by created date (newest first) - use raw booking data for more reliable sorting
@@ -560,8 +614,8 @@ class RecentBookingsManager:
         
         # Create header row FIRST
         if parsed_bookings:
-            header_cols = st.columns([1, 1.5, 1.5, 1, 1.5, 1.5, 1, 1, 1])
-            headers = ["Load", "Source", "Guest Name", "Sell Price", "Vendor", "Created", "Status", "Type", "Extent"]
+            header_cols = st.columns([1.2, 1.2, 1.2, 1, 1, 1, 1.2, 1, 1, 1, 1])
+            headers = ["Load", "Source", "Guest Name", "Sell Price", "Invoiced", "Received", "Vendor", "Created", "Status", "Type", "Extent"]
             
             for i, (col, header) in enumerate(zip(header_cols, headers)):
                 with col:
@@ -573,8 +627,8 @@ class RecentBookingsManager:
         for i, booking in enumerate(bookings_to_display):
             booking_id = booking.get('e_id', '') or booking.get('booking_id', '')
             
-            # Create columns for each booking row
-            col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([1, 1.5, 1.5, 1, 1.5, 1.5, 1, 1, 1])
+            # Create columns for each booking row - updated to include invoice columns
+            col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11 = st.columns([1.2, 1.2, 1.2, 1, 1, 1, 1.2, 1, 1, 1, 1])
             
             with col1:
                 # Load button
@@ -599,30 +653,36 @@ class RecentBookingsManager:
             
             with col4:
                 st.write(booking.get('sell_price', ''))
-            
+
             with col5:
-                st.write(booking.get('vendor', ''))
-            
+                st.write(booking.get('amount_invoiced', ''))
+
             with col6:
-                st.write(booking.get('created_date', ''))
+                st.write(booking.get('amount_received', ''))
             
             with col7:
+                st.write(booking.get('vendor', ''))
+            
+            with col8:
+                st.write(booking.get('created_date', ''))
+            
+            with col9:
                 status = booking.get('status', '')
                 if status == 'Active':
                     st.write(f":green[{status}]")
                 else:
                     st.write(f":red[{status}]")
             
-            with col8:
+            with col10:
                 booking_type = booking.get('booking_type', '')
                 if booking_type == 'ACCOMMODATION':
-                    st.write("🏠 ACCOM")
+                    st.write("ACCOM")
                 elif booking_type == 'SERVICE':
-                    st.write("🚌 SVC")
+                    st.write("SVC")
                 else:
                     st.write(booking_type)
             
-            with col9:
+            with col11:
                 extent = booking.get('extent', '')
                 # Add color coding for extent
                 if extent == 'RESERVATION':
@@ -634,6 +694,87 @@ class RecentBookingsManager:
                 else:
                     st.write(extent)
     
+    def display_sortable_table(self, location="main"):
+        """Display bookings as a sortable dataframe"""
+        
+        # Use filtered bookings if available, otherwise use all bookings
+        if hasattr(st.session_state, 'filtered_bookings_data') and st.session_state.filtered_bookings_data:
+            parsed_bookings = st.session_state.filtered_bookings_data
+        else:
+            bookings = st.session_state.recent_bookings_data
+            if not bookings:
+                st.info("No recent bookings found.")
+                return
+            parsed_bookings = [self.parse_booking_summary(booking) for booking in bookings]
+        
+        if not parsed_bookings:
+            st.info("No bookings found for the selected criteria.")
+            return
+        
+        # Remove duplicates based on composite key
+        seen_composite_keys = set()
+        unique_bookings = []
+        
+        for booking in parsed_bookings:
+            composite_key = booking.get('composite_key', '')
+            if not composite_key:
+                e_id = booking.get('e_id', '')
+                booking_id = booking.get('booking_id', '')
+                composite_key = f"{e_id}_{booking_id}"
+            
+            if composite_key and composite_key not in seen_composite_keys:
+                seen_composite_keys.add(composite_key)
+                unique_bookings.append(booking)
+            elif not composite_key:
+                unique_bookings.append(booking)
+        
+        # Create DataFrame
+        df = pd.DataFrame(unique_bookings)
+        
+        # Select and rename columns for display
+        display_columns = {
+            'e_id': 'eID',
+            'booking_source': 'Source',
+            'guest_name': 'Guest Name',
+            'sell_price': 'Sell Price',
+            'amount_invoiced': 'Invoiced',
+            'amount_received': 'Received',
+            'vendor': 'Vendor',
+            'created_date': 'Created',
+            'status': 'Status',
+            'booking_type': 'Type',
+            'extent': 'Extent'
+        }
+        
+        df_display = df[list(display_columns.keys())].rename(columns=display_columns)
+        
+        # Show count
+        total_count = len(df_display)
+        active_count = len(df[df['is_active'] == True])
+        cancelled_count = total_count - active_count
+        st.write(f"**Displaying {total_count} booking(s): {active_count} active, {cancelled_count} cancelled**")
+        
+        # Make the table interactive with sorting
+        selected_indices = st.dataframe(
+            df_display,
+            use_container_width=True,
+            hide_index=True,
+            height=600,  # Set fixed height in pixels
+            on_select="rerun",
+            selection_mode="single-row"
+        )
+        
+        # Handle row selection - load the booking
+        if selected_indices and hasattr(selected_indices, 'selection') and selected_indices.selection.rows:
+            selected_idx = selected_indices.selection.rows[0]
+            selected_booking = unique_bookings[selected_idx]
+            
+            # Load the selected booking
+            booking_id = selected_booking['e_id'] or selected_booking['booking_id']
+            st.session_state.last_search = booking_id
+            st.session_state.using_recent = True
+            st.rerun()
+
     def display_booking_summary_table(self):
         """Display bookings in a table format (alternative view)"""
         
@@ -650,9 +791,12 @@ class RecentBookingsManager:
         
         # Select and rename columns for display
         display_columns = {
-            'e_id': 'Booking ID',
+            'e_id': 'eID',
+            'booking_id': 'Booking ID',
             'vendor': 'Property', 
             'guest_name': 'Guest',
+            'amount_invoiced': 'Invoiced',
+            'amount_received': 'Received',
             'checkin_date': 'Check-in',
             'nights': 'Nights',
             'guests': 'Guests',
