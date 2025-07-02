@@ -130,6 +130,76 @@ class RoomBossAPI:
             return {}
 
 
+def generate_booking_link(hotel_id, room_type_id, checkin_date, checkout_date, nights, guests):
+    """
+    Generate a booking link for the Holiday Niseko booking system
+    
+    Args:
+        hotel_id (str): Hotel ID from the API
+        room_type_id (str): Room Type ID from the API
+        checkin_date (str): Check-in date in YYYYMMDD format
+        checkout_date (str): Check-out date in YYYYMMDD format
+        nights (int): Number of nights
+        guests (str or int): Number of guests
+    
+    Returns:
+        str: Complete booking URL
+    """
+    base_url = "https://holiday-niseko.evoke.jp/search/listing"
+    
+    # Build the URL
+    booking_url = (
+        f"{base_url}/{hotel_id}?"
+        f"rtid={room_type_id}&"
+        f"ci={checkin_date}&"
+        f"co={checkout_date}&"
+        f"n={nights}&"
+        f"g={guests}&"
+        f"sv=1&"
+        f"utm_source=search_tool&utm_medium=internal&utm_campaign=booking"
+    )
+    
+    return booking_url
+
+
+def add_booking_links_to_dataframe(df, checkin_date, checkout_date, nights, guests_input):
+    """
+    Add booking links to the results dataframe
+    
+    Args:
+        df (pd.DataFrame): Results dataframe
+        checkin_date (str): Check-in date in YYYYMMDD format
+        checkout_date (str): Check-out date in YYYYMMDD format
+        nights (int): Number of nights
+        guests_input (str): Number of guests
+    
+    Returns:
+        pd.DataFrame: DataFrame with booking links added
+    """
+    df_with_links = df.copy()
+    
+    # Generate booking links for each row
+    booking_links = []
+    for idx, row in df_with_links.iterrows():
+        hotel_id = row.get('Hotel ID', '')
+        room_type_id = row.get('Room Type ID', '')
+        
+        if hotel_id and room_type_id and hotel_id != 'N/A' and room_type_id != 'N/A':
+            link = generate_booking_link(
+                hotel_id, 
+                room_type_id, 
+                checkin_date, 
+                checkout_date, 
+                nights, 
+                guests_input
+            )
+            booking_links.append(link)
+        else:
+            booking_links.append('')
+    
+    df_with_links['Booking Link'] = booking_links
+    
+    return df_with_links
 
 
 def init_session_state():
@@ -555,6 +625,11 @@ def main():
                 st.session_state.checkout_dt - st.session_state.checkin_dt
             ).days
             
+            # Store the search parameters for booking links
+            st.session_state.checkin_input = checkin_input
+            st.session_state.checkout_input = checkout_input
+            st.session_state.guests_input = guests_input
+            
             results_df = process_search_results(
                 api,
                 checkin_input,
@@ -632,7 +707,19 @@ def main():
             with col1:
                 st.write(f"###### {filtered_df.hotel_room_name.nunique()} Stays")
                 
-                display_df = filtered_df.copy()
+                # Add booking links to the dataframe
+                if hasattr(st.session_state, 'checkin_input'):
+                    display_df = add_booking_links_to_dataframe(
+                        filtered_df,
+                        st.session_state.checkin_input,
+                        st.session_state.checkout_input,
+                        st.session_state.nights,
+                        st.session_state.guests_input
+                    )
+                else:
+                    display_df = filtered_df.copy()
+                
+                # Rename columns for display
                 display_df = display_df.rename(columns={
                     'Bedrooms': 'Beds',
                     'Bathrooms': 'Baths',
@@ -645,11 +732,18 @@ def main():
                 if "Hotel ID" not in display_df.columns:
                     display_df["Hotel ID"] = "N/A"
                 
-                # Define the columns to display, with IDs at the end
+                # Define the columns to display, with booking link after management
                 display_columns = [
                     "Room", "Price", "Per Night", "Beds", "Baths", "Max PAX", 
-                    "Available", "Management", "Room Type ID", "Hotel ID"
+                    "Available", "Management"
                 ]
+                
+                # Add booking link column after management if it exists
+                if "Booking Link" in display_df.columns:
+                    display_columns.append("Booking Link")
+                
+                # Add the ID columns at the end
+                display_columns.extend(["Room Type ID", "Hotel ID"])
                 
                 # Make sure we only include columns that exist
                 display_columns = [col for col in display_columns if col in display_df.columns]
@@ -663,7 +757,7 @@ def main():
                 
                 st.dataframe(
                     styled_df,
-                    width=1000,
+                    width=1200,
                     height=800,
                     hide_index=True
                 )
@@ -823,4 +917,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

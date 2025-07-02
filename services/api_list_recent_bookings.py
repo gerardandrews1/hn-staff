@@ -1,11 +1,51 @@
 # -*- coding: utf-8 -*-
-# services/api_list_recent_bookings.py
+# services/api_list_recent_bookings.py - Rate Limited Version
 
 import requests
 import json
 import datetime
+import time
 from typing import Optional, Dict, Any
 import base64
+
+# Global variables to track API call timing
+_api_call_times = []  # List of timestamps for recent API calls
+_max_calls_per_minute = 60
+_rate_limit_threshold = 40  # Start rate limiting when we hit this many calls per minute
+_safety_buffer = 5  # Extra safety margin
+
+def _smart_rate_limit():
+    """
+    Intelligent rate limiting that only kicks in when approaching the limit
+    - Tracks calls in a rolling 60-second window
+    - Only applies delays when approaching the rate limit
+    - Uses adaptive delays based on current call frequency
+    """
+    global _api_call_times
+    
+    current_time = time.time()
+    
+    # Remove calls older than 60 seconds
+    _api_call_times = [t for t in _api_call_times if current_time - t < 60.0]
+    
+    calls_in_last_minute = len(_api_call_times)
+    
+    # Only apply rate limiting if we're approaching the threshold
+    if calls_in_last_minute >= _rate_limit_threshold:
+        # Calculate how long to wait
+        if calls_in_last_minute >= (_max_calls_per_minute - _safety_buffer):
+            # Close to limit - wait longer
+            sleep_time = 1.2
+            print(f"DEBUG: Near rate limit ({calls_in_last_minute}/60 calls) - sleeping {sleep_time}s")
+        else:
+            # Approaching threshold - shorter delay
+            sleep_time = 0.5
+            print(f"DEBUG: Approaching rate limit ({calls_in_last_minute}/60 calls) - sleeping {sleep_time}s")
+        
+        time.sleep(sleep_time)
+    
+    # Record this call
+    _api_call_times.append(current_time)
 
 def call_recent_bookings_api(
     date: str,
@@ -14,7 +54,7 @@ def call_recent_bookings_api(
     booking_type: str = "ALL"
 ) -> requests.Response:
     """
-    Call the List Bookings Changed on Date API endpoint
+    Call the List Bookings Changed on Date API endpoint with rate limiting
     
     Args:
         date: Date in YYYYMMDD format (from docs)
@@ -25,6 +65,9 @@ def call_recent_bookings_api(
     Returns:
         requests.Response object
     """
+    
+    # Apply smart rate limiting before making the call
+    _smart_rate_limit()
     
     # Correct API endpoint from documentation
     url = "https://api.roomboss.com/extws/hotel/v1/listBookings"
@@ -83,7 +126,7 @@ def get_recent_bookings_for_date_range(
     booking_type: str = "ALL"
 ) -> Dict[str, Any]:
     """
-    Get recent bookings for a date range
+    Get recent bookings for a date range with rate limiting and progress tracking
     
     Args:
         start_date: Start date in YYYY-MM-DD format
@@ -103,13 +146,28 @@ def get_recent_bookings_for_date_range(
     start_dt = datetime.datetime.strptime(start_date, '%Y-%m-%d')
     end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d')
     
+    # Calculate total days for progress tracking
+    total_days = (end_dt - start_dt).days + 1
+    
+    # Warn if this will take a long time
+    if total_days > 30:
+        print(f"WARNING: Fetching {total_days} days of data. This will take approximately {total_days} seconds due to rate limiting.")
+    
     # Iterate through each date in the range
     current_date = start_dt
+    day_count = 0
+    
     while current_date <= end_dt:
+        day_count += 1
+        
         # Convert to YYYYMMDD format as required by API
         date_str = current_date.strftime('%Y%m%d')
         
-        # Call API for this date
+        # Show progress for longer operations
+        if total_days > 7:
+            print(f"Progress: Fetching day {day_count}/{total_days} ({date_str})")
+        
+        # Call API for this date (with smart rate limiting)
         response = call_recent_bookings_api(
             date=date_str,
             api_id=api_id, 
@@ -140,10 +198,13 @@ def get_recent_bookings_for_date_range(
         # Move to next day
         current_date += datetime.timedelta(days=1)
     
+    print(f"Completed fetching {total_days} days. Found {len(all_bookings)} total bookings.")
+    
     return {
         'bookings': all_bookings,
         'total_count': len(all_bookings),
         'date_range': f"{start_date} to {end_date}",
+        'days_processed': total_days,
         'errors': errors,
         'success': len(errors) == 0
     }
