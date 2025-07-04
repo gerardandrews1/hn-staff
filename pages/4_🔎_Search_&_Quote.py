@@ -8,6 +8,7 @@ import numpy as np
 from typing import Dict, List, Any
 import requests
 import json
+import time
 
 # Add root directory to Python path
 root_dir = Path(__file__).parent.parent
@@ -130,6 +131,42 @@ class RoomBossAPI:
             return {}
 
 
+def generate_muwa_link(checkin_date, checkout_date, guests):
+    """
+    Generate a Muwa booking link with the same search parameters
+    
+    Args:
+        checkin_date (str): Check-in date in YYYYMMDD format
+        checkout_date (str): Check-out date in YYYYMMDD format
+        guests (str or int): Number of guests
+    
+    Returns:
+        str: Complete Muwa booking URL
+    """
+    # Convert YYYYMMDD to YYYY-MM-DD format for Muwa
+    checkin_formatted = f"{checkin_date[:4]}-{checkin_date[4:6]}-{checkin_date[6:8]}"
+    checkout_formatted = f"{checkout_date[:4]}-{checkout_date[4:6]}-{checkout_date[6:8]}"
+    
+    muwa_url = (
+        f"https://reservations.muwaniseko.com/?"
+        f"adult={guests}&"
+        f"arrive={checkin_formatted}&"
+        f"chain=30293&"
+        f"child=0&"
+        f"currency=JPY&"
+        f"depart={checkout_formatted}&"
+        f"hotel=40305&"
+        f"level=hotel&"
+        f"locale=en-US&"
+        f"productcurrency=JPY&"
+        f"rooms=1&"
+        f"v=1&"
+        f"utm_source=streamlit&utm_medium=internal&utm_campaign=muwa_booking"
+    )
+    
+    return muwa_url
+
+
 def generate_booking_link(hotel_id, room_type_id, checkin_date, checkout_date, nights, guests):
     """
     Generate a booking link for the Holiday Niseko booking system
@@ -156,7 +193,7 @@ def generate_booking_link(hotel_id, room_type_id, checkin_date, checkout_date, n
         f"n={nights}&"
         f"g={guests}&"
         f"sv=1&"
-        f"utm_source=search_tool&utm_medium=internal&utm_campaign=booking"
+        f"utm_source=streamlit&utm_medium=internal&utm_campaign=booking"
     )
     
     return booking_url
@@ -183,6 +220,7 @@ def add_booking_links_to_dataframe(df, checkin_date, checkout_date, nights, gues
     for idx, row in df_with_links.iterrows():
         hotel_id = row.get('Hotel ID', '')
         room_type_id = row.get('Room Type ID', '')
+        hotel_name = row.get('Hotel Name', '')
         
         if hotel_id and room_type_id and hotel_id != 'N/A' and room_type_id != 'N/A':
             link = generate_booking_link(
@@ -193,7 +231,9 @@ def add_booking_links_to_dataframe(df, checkin_date, checkout_date, nights, gues
                 nights, 
                 guests_input
             )
-            booking_links.append(link)
+            # Create custom link text with hotel name
+            link_text = f"Book {hotel_name} online and secure your dates"
+            booking_links.append(f'<a href="{link}" target="_blank">{link_text}</a>')
         else:
             booking_links.append('')
     
@@ -464,7 +504,7 @@ def handle_sidebar_inputs():
         exclude_list = [] if "Yes" in exclude else unbookable_list
         
         # Add the checkbox for showing only lowest prices
-        show_lowest_prices = st.checkbox("Show only lowest price per accommodation")
+        show_lowest_prices = st.checkbox("Show only lowest price per accommodation", value = True)
         
         # Add a separator before the exclude rate plans option
         st.write("")
@@ -618,6 +658,7 @@ def main():
     checkin_input, checkout_input, guests_input, search_col, bedrooms, management, exclude_list, exclude_rate_plans, show_lowest_prices = handle_sidebar_inputs()
     
     if search_col:
+        start_time = time.time()
         try:
             st.session_state.checkin_dt = datetime.strptime(checkin_input, "%Y%m%d")
             st.session_state.checkout_dt = datetime.strptime(checkout_input, "%Y%m%d")
@@ -630,6 +671,7 @@ def main():
             st.session_state.checkout_input = checkout_input
             st.session_state.guests_input = guests_input
             
+            search_start = time.time()
             results_df = process_search_results(
                 api,
                 checkin_input,
@@ -637,13 +679,26 @@ def main():
                 guests_input,
                 management_dict
             )
+            search_end = time.time()
             
             st.session_state.stays = results_df
             
-            # New: Fetch rate plan descriptions
-            if "hotel_ids_used" in st.session_state:
-                rate_plan_descs = api.get_rate_plan_descriptions(st.session_state.hotel_ids_used)
-                st.session_state.rate_plan_descs = rate_plan_descs
+            rate_plan_start = time.time()
+            # New: Fetch rate plan descriptions (TEMPORARILY DISABLED FOR PERFORMANCE)
+            # if "hotel_ids_used" in st.session_state:
+            #     rate_plan_descs = api.get_rate_plan_descriptions(st.session_state.hotel_ids_used)
+            #     st.session_state.rate_plan_descs = rate_plan_descs
+            rate_plan_end = time.time()
+            
+            end_time = time.time()
+            
+            # Store timing information in session state
+            total_time = end_time - start_time
+            search_time = search_end - search_start
+            rate_plan_time = rate_plan_end - rate_plan_start
+            
+            st.session_state.last_search_time = total_time
+            st.session_state.last_search_breakdown = f"Hotel search: {search_time:.2f}s | Rate plans: {rate_plan_time:.2f}s (disabled)"
 
         except Exception as e:
             st.error(f"Error during search: {str(e)}")
@@ -669,9 +724,25 @@ def main():
                     f"**check out** - {st.session_state.checkout_dt.strftime('%B %d, %Y')} "
                     f"({st.session_state.nights} nights)"
                 )
+                
+                # Add timing information if available
+                # if hasattr(st.session_state, 'last_search_time'):
+                #     date_line += f" | ⏱️ Search took {st.session_state.last_search_time:.2f}s ({st.session_state.last_search_breakdown})"
+                
+                # Add Muwa link if search parameters are available
                 header = st.container()
                 header.write(" ")
-                header.write(date_line)
+                header.write(date_line, unsafe_allow_html=True)
+                
+                # Add Muwa link on a separate line if search parameters are available
+                if hasattr(st.session_state, 'checkin_input') and hasattr(st.session_state, 'checkout_input') and hasattr(st.session_state, 'guests_input'):
+                    muwa_url = generate_muwa_link(
+                        st.session_state.checkin_input,
+                        st.session_state.checkout_input,
+                        st.session_state.guests_input
+                    )
+                    muwa_line = f'<a href="{muwa_url}" target="_blank" style="color: blue; text-decoration: underline;">Search Muwa</a>'
+                    header.write(muwa_line, unsafe_allow_html=True)
                 
                 header.write("""<div class='fixed-header'/>""", unsafe_allow_html=True)
                 
@@ -750,16 +821,33 @@ def main():
                 
                 display_df = display_df[display_columns]
                 
-                styled_df = display_df.style.format({
-                    'Price': '¥{:,.0f}',
-                    'Per Night': '¥{:,.0f}'
-                })
+                # Convert booking links to proper format for Streamlit
+                if "Booking Link" in display_df.columns:
+                    # Extract just the URLs for LinkColumn
+                    def extract_url(html_link):
+                        if html_link and 'href="' in html_link:
+                            start = html_link.find('href="') + 6
+                            end = html_link.find('"', start)
+                            return html_link[start:end]
+                        return html_link
+                    
+                    display_df['Booking Link'] = display_df['Booking Link'].apply(extract_url)
+                
+                # Configure column settings for clickable links
+                column_config = {}
+                if "Booking Link" in display_df.columns:
+                    column_config["Booking Link"] = st.column_config.LinkColumn(
+                        "Book online and secure your dates",
+                        help="Click to open booking page, or right-click to copy link",
+                        validate="^https://.*"
+                    )
                 
                 st.dataframe(
-                    styled_df,
+                    display_df,
                     width=1200,
                     height=800,
-                    hide_index=True
+                    hide_index=True,
+                    column_config=column_config
                 )
                 
                 st.write("Early Bird offer: ¥0 for X guests (requires full payment by May 31st)")
