@@ -50,9 +50,7 @@ class Booking:
     
     def _get_service_guide_url(self):
         """Return the URL for the service guide"""
-        return ("https://holidayniseko.com/sites/default"
-                "/files/services/2024-08/Holiday%20Niseko"
-                "%20Guest%20Service%20Guide%202024_2025.pdf")
+        return ("https://holidayniseko.com/sites/default/files/2025-05/Holiday%20Niseko%20Guest%20Services%20Guide.pdf")
     
     def set_prop_management_lists(self):
         """Initialize property management lists from configuration files"""
