@@ -537,7 +537,7 @@ class RecentBookingsManager:
         Load the list of Holiday Niseko managed properties from JSON file
         
         Returns:
-            List of managed property IDs/names
+            List of managed property names
         """
         try:
             import json
@@ -555,27 +555,17 @@ class RecentBookingsManager:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # Extract the list of managed properties
-            # The exact structure depends on your JSON file format
-            # Common patterns:
-            if isinstance(data, list):
-                # If it's a simple list of property IDs/names
-                return data
-            elif isinstance(data, dict):
-                # If it's a dict with managed properties under a key
-                managed_properties = (
-                    data.get('managed_properties', []) or
-                    data.get('holiday_niseko_managed', []) or
-                    data.get('managed', []) or
-                    list(data.keys())  # If keys are property IDs
-                )
+            # Extract Holiday Niseko managed properties specifically
+            if isinstance(data, dict) and "Holiday Niseko" in data:
+                managed_properties = data["Holiday Niseko"]
+                st.info(f"Loaded {len(managed_properties)} Holiday Niseko managed properties")
                 return managed_properties
             else:
-                st.warning("Unexpected format in property management file")
+                st.warning("Could not find 'Holiday Niseko' key in property management file")
                 return []
                 
         except Exception as e:
-            st.warning(f"Error loading property management file: {str(e)}")
+            st.error(f"Error loading property management file: {str(e)}")
             return []
 
     def _is_holiday_niseko_managed(self, booking_data: Dict[str, Any]) -> bool:
@@ -587,7 +577,7 @@ class RecentBookingsManager:
             booking_data: Raw booking data from API
             
         Returns:
-            True if Holiday Niseko managed, False otherwise
+            True if Holiday Niseko managed, False if not managed
         """
         
         # Handle different API response structures
@@ -608,25 +598,78 @@ class RecentBookingsManager:
         
         managed_properties = self._managed_properties_cache
         
-        # Check if any of the hotel identifiers match the managed list
-        # Check against hotel ID, name, and URL
+        # If no managed properties loaded, default to not managed
+        if not managed_properties:
+            return False
+        
+        # Check exact matches first
         identifiers_to_check = [hotel_id, hotel_name, hotel_url]
         
         for identifier in identifiers_to_check:
             if identifier and identifier in managed_properties:
                 return True
         
-        # Also check for partial matches (in case JSON has partial names/URLs)
+        # Check partial matches (property name contained in hotel name)
         for managed_prop in managed_properties:
-            if managed_prop:
-                # Check if managed property name is contained in hotel name
-                if hotel_name and managed_prop.lower() in hotel_name.lower():
-                    return True
-                # Check if managed property name is contained in hotel URL
-                if hotel_url and managed_prop.lower() in hotel_url.lower():
+            if managed_prop and hotel_name:
+                if managed_prop.lower() in hotel_name.lower():
                     return True
         
+        # If not found in the Holiday Niseko managed list, it's not managed
         return False
+    
+    def _apply_management_type_filter(self, bookings, management_type_filter):
+        """Apply combined management and booking type filtering"""
+        if management_type_filter == "All":
+            return bookings
+        
+        filtered = []
+        
+        for booking in bookings:
+            include_booking = False
+            
+            booking_type = booking.get('booking_type', '')
+            is_hn_managed = booking.get('is_hn_managed', False)
+            
+            if management_type_filter == "🏠 Accommodation":
+                # All accommodation regardless of management
+                include_booking = (booking_type == 'ACCOMMODATION')
+            elif management_type_filter == "🏠 HN Managed":
+                # Only HN managed accommodation
+                include_booking = (booking_type == 'ACCOMMODATION' and is_hn_managed)
+            elif management_type_filter == "🏢 Non-Managed":
+                # Only non-managed accommodation  
+                include_booking = (booking_type == 'ACCOMMODATION' and not is_hn_managed)
+            elif management_type_filter == "🎿 Services":
+                # Only services (regardless of management)
+                include_booking = (booking_type == 'SERVICE')
+            
+            if include_booking:
+                filtered.append(booking)
+        
+        return filtered
+
+    def _apply_booking_type_filter(self, bookings, booking_type_filter):
+        """Apply booking type filtering to separate accommodation from services"""
+        if booking_type_filter == "All Types":
+            return bookings
+        
+        filtered = []
+        
+        for booking in bookings:
+            include_booking = False
+            
+            booking_type = booking.get('booking_type', '')
+            
+            if booking_type_filter == "🏠 Accommodation":
+                include_booking = booking_type == 'ACCOMMODATION'
+            elif booking_type_filter == "🎿 Services":
+                include_booking = booking_type == 'SERVICE'
+            
+            if include_booking:
+                filtered.append(booking)
+        
+        return filtered
     
     def _apply_management_filter(self, bookings, management_filter):
         """Apply management-based filtering to bookings"""
@@ -876,7 +919,7 @@ class RecentBookingsManager:
             # Split into two rows for better organization
             
             # Row 1: Title and main controls
-            col1, col2, col3, col4, col5, col6 = st.columns([1.3, 1, 1, 1, 1, 1])
+            col1, col2, col3, col4, col5, col6 = st.columns([1.3, 1, 1, 1.2, 1, 1])
             
             with col1:
                 st.markdown("### Recent Bookings")
@@ -901,22 +944,23 @@ class RecentBookingsManager:
                 )
             
             with col4:
-                # NEW: Season filter dropdown
+                # Combined Management/Type filter with Accommodation option added
+                management_type_filter = st.selectbox(
+                    "Property Type:",
+                    ["All", "🏠 Accommodation", "🏠 HN Managed", "🏢 Non-Managed", "🎿 Services"],
+                    index=0,
+                    key=f"management_type_filter_{location}",
+                    label_visibility="collapsed"
+                )
+
+            
+            with col5:
+                # Season filter dropdown
                 season_filter = st.selectbox(
                     "Season:",
                     ["All Seasons", "❄️ Winter", "☀️ Summer"],
                     index=0,
                     key=f"season_filter_{location}",
-                    label_visibility="collapsed"
-                )
-            
-            with col5:
-                # NEW: Management filter dropdown
-                management_filter = st.selectbox(
-                    "Management:",
-                    ["All Properties", "🏠 HN Managed", "🏢 Non-Managed"],
-                    index=0,
-                    key=f"management_filter_{location}",
                     label_visibility="collapsed"
                 )
             
@@ -957,8 +1001,8 @@ class RecentBookingsManager:
                 start_date = end_date = None
                 force_refresh = False
             
-            # Create filter key to detect changes (include content filter, season filter, and management filter)
-            current_filter_key = f'{filter_option}_{start_date}_{end_date}_{content_filter}_{season_filter}_{management_filter}'
+            # Create filter key to detect changes (include all filters)
+            current_filter_key = f'{filter_option}_{start_date}_{end_date}_{content_filter}_{management_type_filter}_{season_filter}'
             last_filter_key = st.session_state.get(f'last_filter_key_{location}', '')
             
             # Only fetch data if filter changed or forced refresh
@@ -1017,17 +1061,17 @@ class RecentBookingsManager:
                     # Apply content filtering SECOND
                     content_filtered_bookings = self._apply_content_filter(time_filtered_bookings, clean_content_filter)
                     
-                    # Apply season filtering THIRD
-                    season_filtered_bookings = self._apply_season_filter(content_filtered_bookings, season_filter)
+                    # Apply combined management/type filtering THIRD
+                    management_type_filtered_bookings = self._apply_management_type_filter(content_filtered_bookings, management_type_filter)
                     
-                    # Apply management filtering FOURTH
-                    management_filtered_bookings = self._apply_management_filter(season_filtered_bookings, management_filter)
+                    # Apply season filtering FOURTH  
+                    season_filtered_bookings = self._apply_season_filter(management_type_filtered_bookings, season_filter)
                     
                     # Remove duplicates AFTER all filtering
                     seen_composite_keys = set()
                     unique_filtered_bookings = []
                     
-                    for booking in management_filtered_bookings:
+                    for booking in season_filtered_bookings:
                         composite_key = booking.get('composite_key', '')
                         if not composite_key:
                             e_id = booking.get('e_id', '')
@@ -1105,10 +1149,12 @@ class RecentBookingsManager:
                 self.display_sortable_table(location)
             else:
                 self.display_bookings_list(location)
-    
+
+
     def display_bookings_list(self, location="main"):
         """Display the list of recent bookings with clickable buttons - Reordered columns (Type removed)"""
-        
+
+
         # Use filtered bookings if available, otherwise use all bookings
         if hasattr(st.session_state, 'filtered_bookings_data') and st.session_state.filtered_bookings_data:
             parsed_bookings = st.session_state.filtered_bookings_data
@@ -1175,27 +1221,38 @@ class RecentBookingsManager:
         
         # Add CSS styling
         st.markdown("""
-            <style>
-            .booking-header {
-                font-weight: bold;
-                background-color: #f0f2f6;
-                padding: 0.25rem;
-                border-radius: 0.25rem;
-                margin-bottom: 0.25rem;
-            }
-            .internal-booking {
-                background-color: #e3f2fd;
-                border-left: 3px solid #2196f3;
-                padding: 0.25rem;
-                margin: 0.1rem 0;
-            }
-            </style>
-        """, unsafe_allow_html=True)
+                <style>
+                .booking-header {
+                    font-weight: bold;
+                    background-color: #f0f2f6;
+                    padding: 0.25rem;
+                    border-radius: 0.25rem;
+                    margin-bottom: 0.25rem;
+                }
+                .internal-booking {
+                    background-color: #e3f2fd;
+                    border-left: 3px solid #2196f3;
+                    padding: 0.25rem;
+                    margin: 0.1rem 0;
+                }
+                /* Remove all button padding and sizing */
+                .stButton > button {
+                    padding: 0px !important;
+                    margin: 0px !important;
+                    border: 1px solid #ccc !important;
+                    font-size: 11px !important;
+                    height: 28px !important;
+                    white-space: nowrap !important;
+                    overflow: hidden !important;
+                    text-overflow: ellipsis !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
         
         # Create header row with REORDERED COLUMNS (Type removed, eID and Created swapped)
         # Order: eID, Created, Source, Guest Name, Vendor, Sell Price, Invoiced, Received, Check-in, Nights, Country, Status, Extent
         if parsed_bookings:
-            header_cols = st.columns([0.8, 1, 1.2, 1.2, 1.2, 1, 1, 1, 0.8, 0.6, 0.8, 1, 1])
+            header_cols = st.columns([0.8, 1, 1.2, 1.2, 1.2, 1, 1, 1, 0.7, 0.7, 0.8, 1, 1])
             headers = ["eID", "Created", "Source", "Guest Name", "Vendor", "Sell Price", "Invoiced", "Received", "Check-in", "Nights", "Country", "Status", "Extent"]
             
             for i, (col, header) in enumerate(zip(header_cols, headers)):
@@ -1216,7 +1273,7 @@ class RecentBookingsManager:
             
             # Create columns for each booking row - REORDERED (Type removed, eID and Created swapped)
             # Order: eID, Created, Source, Guest Name, Vendor, Sell Price, Invoiced, Received, Check-in, Nights, Country, Status, Extent
-            col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.8, 1, 1.2, 1.2, 1.2, 1, 1, 1, 0.8, 0.6, 0.8, 1, 1])
+            col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.8, 0.9, 1.1, 1.1, 1.1, 1, 1, 1, 0.8, 0.6, 0.8, 1, 1])
             
             # Visual highlighting for internal bookings
             if is_internal:
@@ -1323,6 +1380,268 @@ class RecentBookingsManager:
                     st.write(f":red[{status}]")
             
             with col13:
+                # Extent - shortened for space
+                extent = booking.get('extent', '')
+                if extent == 'RESERVATION':
+                    st.write(f":green[RES]")
+                elif extent == 'REQUEST':
+                    st.write(f":orange[RQST]")
+                elif extent == 'REQUEST_INTERNAL':
+                    st.write(f":blue[🔧 INT]")
+                else:
+                    st.write(extent)
+            # Close the internal booking div
+            if is_internal:
+                for col in [col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13]:
+                    with col:
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+    def display_booking_summary_table(self):
+        """Display bookings in a table format (alternative view) - Updated with reordered columns (Type removed)"""
+        
+        parsed_bookings = self.get_parsed_bookings()
+        
+        if not parsed_bookings:
+            st.info("No recent bookings found.")
+            return
+        
+        df = pd.DataFrame(parsed_bookings)
+        
+        # Select and rename columns for display - REORDERED (Type removed, eID and Created swapped)
+        display_columns = {
+            'e_id': 'eID',
+            'created_date': 'Created',
+            'booking_source': 'Source', 
+            'guest_name': 'Guest Name',
+            'vendor': 'Vendor',
+            'sell_price': 'Sell Price',
+            'amount_invoiced': 'Invoiced',
+            'checkin_date': 'Check-in',
+            'nights': 'Nights',
+            'country': 'Country',
+            'status': 'Status',
+            'extent': 'Extent'
+        }
+        
+        # Only include columns that exist
+        available_columns = {col: name for col, name in display_columns.items() if col in df.columns}
+        df_display = df[list(available_columns.keys())].rename(columns=available_columns)
+        
+        # Make the table interactive
+        selected_indices = st.dataframe(
+            df_display,
+            use_container_width=True,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row"
+        )
+        
+        # Handle row selection
+        if selected_indices and hasattr(selected_indices, 'selection') and selected_indices.selection.rows:
+            selected_idx = selected_indices.selection.rows[0]
+            selected_booking = parsed_bookings[selected_idx]
+            
+            # Load the selected booking
+            st.session_state.last_search = selected_booking['e_id']
+            st.session_state.using_recent = True
+            st.rerun()
+            
+            if composite_key and composite_key not in seen_composite_keys:
+                seen_composite_keys.add(composite_key)
+                unique_bookings.append(booking)
+            elif not composite_key:
+                unique_bookings.append(booking)
+                
+        parsed_bookings = unique_bookings
+        
+        # Sort by created date (newest first)
+        def get_created_date_for_sort(booking):
+            try:
+                if 'raw_data' in booking and booking['raw_data']:
+                    if 'booking' in booking['raw_data']:
+                        booking_info = booking['raw_data']['booking']
+                    else:
+                        booking_info = booking['raw_data']
+                    return booking_info.get('createdDate', '')
+                return ''
+            except:
+                return ''
+        
+        parsed_bookings.sort(key=get_created_date_for_sort, reverse=True)
+        
+        # Show count info
+        total_count = len(parsed_bookings)
+        active_count = len([b for b in parsed_bookings if b.get('is_active')])
+        cancelled_count = total_count - active_count
+        st.write(f"**Displaying {total_count} booking(s): {active_count} active, {cancelled_count} cancelled**")
+        
+        # Performance limit for large datasets
+        display_limit = None
+        if total_count > 50:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.warning(f"Large number of bookings ({total_count}). Showing first 50 for performance.")
+            with col2:
+                if st.button("Show All", key=f"show_all_{location}"):
+                    display_limit = total_count
+                else:
+                    display_limit = 50
+        else:
+            display_limit = total_count
+        
+        # Add CSS styling
+        st.markdown("""
+    <style>
+    .booking-header {
+        font-weight: bold;
+        background-color: #f0f2f6;
+        padding: 0.25rem;
+        border-radius: 0.25rem;
+        margin-bottom: 0.25rem;
+    }
+    .internal-booking {
+        background-color: #e3f2fd;
+        border-left: 3px solid #2196f3;
+        padding: 0.25rem;
+        margin: 0.1rem 0;
+    }
+    /* Force buttons to be smaller and not wrap */
+    .stButton > button {
+        padding: 0.1rem 0.2rem !important;
+        font-size: 0.8rem !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        min-width: auto !important;
+        width: 100% !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+        
+        # Create header row with REORDERED COLUMNS (Type removed, eID and Created swapped)
+        # Order: eID, Created, Source, Guest Name, Vendor, Sell Price, Invoiced, Received, Check-in, Nights, Country, Status, Extent
+        if parsed_bookings:
+            header_cols = st.columns([1.5, 0.9, 1, 1.3, 1.5, 0.9, 0.9, 0.9, 0.9, 0.5, 0.6, 0.6, 0.5])
+            headers = ["eID", "Created", "Source", "Guest Name", "Vendor", "Sell Price", "Invoiced", "Received", "Check-in", "Nights", "Country", "Status", "Extent"]
+            
+            for i, (col, header) in enumerate(zip(header_cols, headers)):
+                with col:
+                    st.markdown(f"**{header}**")
+        
+        # Display bookings with REORDERED COLUMNS (Type removed)
+        bookings_to_display = parsed_bookings[:display_limit] if display_limit else parsed_bookings
+        
+        for i, booking in enumerate(bookings_to_display):
+            booking_id = booking.get('e_id', '') or booking.get('booking_id', '')
+            
+            # Check if this is an unpaid Book & Pay booking
+            is_unpaid = self._is_unpaid_book_and_pay(booking)
+            
+            # Check if this is an internal request
+            is_internal = booking.get('extent', '') == 'REQUEST_INTERNAL'
+            
+            # Create columns for each booking row - REORDERED (Type removed, eID and Created swapped)
+            # Order: eID, Created, Source, Guest Name, Vendor, Sell Price, Invoiced, Received, Check-in, Nights, Country, Status, Extent
+            col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13 = st.columns([0.8, 1, 1.2, 1.2, 1.2, 1, 1, 1, 0.8, 0.6, 0.8, 1, 1])
+            
+            # Visual highlighting for internal bookings
+            if is_internal:
+                for col in [col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13]:
+                    with col:
+                        st.markdown('<div class="internal-booking">', unsafe_allow_html=True)
+            
+            with col1:
+                # eID (regular text, no button due to wrapping issues)
+                if booking_id and booking_id != 'unknown':
+                    text_label = f"#{booking_id}"
+                    if is_internal:
+                        text_label = f"🔧{booking_id}"
+                    
+                    # Use colored text to indicate it's clickable
+                    st.markdown(f"**{text_label}**")
+                else:
+                    st.write(f"#{booking_id}")     
+
+            with col2:
+                # Created date
+                st.write(booking.get('created_date', ''))
+            
+            with col3:
+                # Booking source
+                source = booking.get('booking_source', '')
+                st.write(source)
+            
+            with col4:
+                # Guest name
+                st.write(booking.get('guest_name', ''))
+            
+            with col5:
+                # Vendor
+                st.write(booking.get('vendor', ''))
+            
+            with col6:
+                # Sell price
+                st.write(booking.get('sell_price', ''))
+
+            with col7:
+                # Amount invoiced
+                st.write(booking.get('amount_invoiced', ''))
+            
+            with col8:
+                # Amount received
+                received = booking.get('amount_received', '')
+                if is_unpaid:
+                    st.write(f"**{received}** ⚠️" if received else "**¥0** ⚠️")
+                else:
+                    st.write(received)
+            
+            with col9:
+                # Check-in date
+                checkin = booking.get('checkin_date', 'N/A')
+                st.write(checkin)
+            
+            with col10:
+                # Nights (WITHOUT "n" suffix)
+                nights = booking.get('nights', 0)
+                if nights > 0:
+                    st.write(str(nights))
+                else:
+                    st.write("N/A")
+            
+            with col11:
+                # Country - ensure truly blank for empty values and convert phone numbers
+                country = booking.get('country', '')
+                
+                # Handle any legacy "UNKNOWN", "N/A", or similar values
+                if country in ['UNKNOWN', 'N/A', 'Unknown', 'unknown', None]:
+                    country = ''
+                    
+                    # Try to extract country from phone if available in raw data
+                    raw_data = booking.get('raw_data', {})
+                    if raw_data:
+                        if 'leadGuest' in raw_data:
+                            lead_guest = raw_data['leadGuest']
+                        elif 'booking' in raw_data and 'leadGuest' in raw_data['booking']:
+                            lead_guest = raw_data['booking']['leadGuest']
+                        else:
+                            lead_guest = raw_data.get('leadGuest', {})
+                        
+                        if lead_guest:
+                            phone_number = lead_guest.get('phoneNumber', '')
+                            if phone_number:
+                                country = self._phone_to_country_code(phone_number)
+                
+                st.write(country)
+            
+            with col12:
+                # Status
+                status = booking.get('status', '')
+                if status == 'Active':
+                    st.write(f":green[{status}]")
+                else:
+                    st.write(f":red[{status}]")
+            
+            with col13:
                 # Extent
                 extent = booking.get('extent', '')
                 if extent == 'RESERVATION':
@@ -1342,7 +1661,8 @@ class RecentBookingsManager:
 
     def display_sortable_table(self, location="main"):
         """Display bookings as a sortable dataframe with REORDERED COLUMNS (Type removed)"""
-        
+
+
         # Use filtered bookings if available, otherwise use all bookings
         if hasattr(st.session_state, 'filtered_bookings_data') and st.session_state.filtered_bookings_data:
             parsed_bookings = st.session_state.filtered_bookings_data

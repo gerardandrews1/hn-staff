@@ -450,18 +450,90 @@ def create_per_night_plot(df, x_jitter, x_positions, x_labels, grouped_data, pri
     return fig2
 
 
+def parse_date_input(date_string):
+    """
+    Parse date input in multiple formats and return YYYYMMDD format
+    
+    Supported formats:
+    - YYYY-MM-DD (2025-12-15)
+    - YYYY/MM/DD (2025/12/15)
+    - YYYYMMDD (20251215)
+    - MM/DD/YYYY (12/15/2025)
+    - MM-DD-YYYY (12-15-2025)
+    - DD/MM/YYYY (15/12/2025) - European format
+    - DD-MM-YYYY (15-12-2025) - European format
+    
+    Also handles:
+    - Leading/trailing whitespace: " 2025-12-15 "
+    - Internal whitespace: "2025 - 12 - 15" or "2025 / 12 / 15"
+    - Mixed whitespace: " 2025 -12- 15 "
+    
+    Args:
+        date_string (str): Date input string
+        
+    Returns:
+        str: Date in YYYYMMDD format, or None if parsing fails
+    """
+    if not date_string:
+        return None
+    
+    # Remove all whitespace (leading, trailing, and internal)
+    date_string = ''.join(date_string.split())
+    
+    # If already in YYYYMMDD format (8 digits)
+    if date_string.isdigit() and len(date_string) == 8:
+        # Validate the date
+        try:
+            datetime.strptime(date_string, "%Y%m%d")
+            return date_string
+        except ValueError:
+            return None
+    
+    # Try different formats
+    formats_to_try = [
+        "%Y-%m-%d",    # 2025-12-15
+        "%Y/%m/%d",    # 2025/12/15
+        "%m/%d/%Y",    # 12/15/2025
+        "%m-%d-%Y",    # 12-15-2025
+        "%d/%m/%Y",    # 15/12/2025 (European)
+        "%d-%m-%Y",    # 15-12-2025 (European)
+    ]
+    
+    for fmt in formats_to_try:
+        try:
+            parsed_date = datetime.strptime(date_string, fmt)
+            return parsed_date.strftime("%Y%m%d")
+        except ValueError:
+            continue
+    
+    return None
+
 
 def handle_sidebar_inputs():
-    """Handle all sidebar inputs and filtering options"""
+    """Handle all sidebar inputs and filtering options with enhanced date parsing"""
     with st.sidebar:
         st.title("Search Options")
         
-        checkin_input = st.text_input("Check-in").replace("-", "")
-        checkout_input = st.text_input("Check-out").replace("-", "")
+        # Get raw input from user
+        checkin_raw = st.text_input(
+            "Check-in", 
+            # help="Formats: 2025-12-15, 2025/12/15, 20251215, 12/15/2025, etc."
+        )
+        checkout_raw = st.text_input(
+            "Check-out", 
+            # help="Formats: 2025-12-24, 2025/12/24, 20251224, 12/24/2025, etc."
+        )
+        
         guests_input = st.text_input("Number of guests")
         
+        # Search button - always enabled
         search_col = st.button("Search & Quote", type="primary")
         
+        # Parse dates only for return (validation happens in main function)
+        checkin_input = parse_date_input(checkin_raw) if checkin_raw else None
+        checkout_input = parse_date_input(checkout_raw) if checkout_raw else None
+        
+        # Rest of the sidebar inputs remain the same...
         st.write("")
         st.write("---")
         st.write("")
@@ -504,7 +576,7 @@ def handle_sidebar_inputs():
         exclude_list = [] if "Yes" in exclude else unbookable_list
         
         # Add the checkbox for showing only lowest prices
-        show_lowest_prices = st.checkbox("Show only lowest price per accommodation", value = True)
+        show_lowest_prices = st.checkbox("Show only lowest price per accommodation", value=True)
         
         # Add a separator before the exclude rate plans option
         st.write("")
@@ -535,7 +607,6 @@ def handle_sidebar_inputs():
                 exclude_rate_plans = st.multiselect(
                     "Exclude rate plans",
                     options=unique_rate_plans,
-                    # default="HN Early Bird",
                     help="Select rate plans to exclude from results"
                 )
                 # Remove "-None" from the list if it's the only item
@@ -548,7 +619,8 @@ def handle_sidebar_inputs():
                 st.warning(f"Could not process rate plans: {str(e)}")
                 exclude_rate_plans = []
         
-        return checkin_input, checkout_input, guests_input, search_col, bedrooms, management, exclude_list, exclude_rate_plans, show_lowest_prices
+        return checkin_input, checkout_input, guests_input, search_col, bedrooms, management, exclude_list, exclude_rate_plans, show_lowest_prices, checkin_raw, checkout_raw
+
 
 
 def filter_results(
@@ -655,9 +727,53 @@ def main():
     results_container = st.container()
     
     # Get all inputs from sidebar (now including show_lowest_prices)
-    checkin_input, checkout_input, guests_input, search_col, bedrooms, management, exclude_list, exclude_rate_plans, show_lowest_prices = handle_sidebar_inputs()
+    checkin_input, checkout_input, guests_input, search_col, bedrooms, management, exclude_list, exclude_rate_plans, show_lowest_prices, checkin_raw, checkout_raw = handle_sidebar_inputs()
     
     if search_col:
+        # Validate inputs before proceeding with search
+        validation_errors = []
+        
+        if not checkin_input:
+            if not checkin_raw:
+                validation_errors.append("Check-in date is required")
+            else:
+                validation_errors.append(f"Invalid check-in date format: '{checkin_raw}'")
+        
+        if not checkout_input:
+            if not checkout_raw:
+                validation_errors.append("Check-out date is required")
+            else:
+                validation_errors.append(f"Invalid check-out date format: '{checkout_raw}'")
+        
+        if not guests_input:
+            validation_errors.append("Number of guests is required")
+        elif not guests_input.isdigit() or int(guests_input) <= 0:
+            validation_errors.append("Number of guests must be a positive number")
+        
+        # Additional date logic validation
+        if checkin_input and checkout_input:
+            try:
+                checkin_dt = datetime.strptime(checkin_input, "%Y%m%d")
+                checkout_dt = datetime.strptime(checkout_input, "%Y%m%d")
+                
+                if checkout_dt <= checkin_dt:
+                    validation_errors.append("Check-out date must be after check-in date")
+                    
+                # Optional: Check if dates are too far in the future
+                today = datetime.now()
+                if checkin_dt < today.replace(hour=0, minute=0, second=0, microsecond=0):
+                    validation_errors.append("Check-in date cannot be in the past")
+                    
+            except ValueError:
+                validation_errors.append("Invalid date values")
+        
+        # Show errors and abort if validation fails
+        if validation_errors:
+            for error in validation_errors:
+                st.error(f"❌ {error}")
+            st.stop()  # This prevents the rest of the search from executing
+        
+        # If we get here, validation passed - continue with search
         start_time = time.time()
         try:
             st.session_state.checkin_dt = datetime.strptime(checkin_input, "%Y%m%d")
@@ -706,7 +822,6 @@ def main():
         
     if "rate_plan_descs" not in st.session_state:
         st.session_state.rate_plan_descs = {}
-
 
     if "stays" in st.session_state:
         with results_container:
@@ -1000,8 +1115,7 @@ def main():
                         else:
                             st.info("No rate plan information available for the selected hotel.")
                     else:
-                        st.info("Rate plan information will be shown after a search is performed.")
-                                    
+                        st.info("Rate plan information will be shown after a search is performed.")                                   
 
 if __name__ == "__main__":
     main()
