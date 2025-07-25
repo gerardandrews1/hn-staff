@@ -1168,7 +1168,7 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
 
                 Thank you for choosing Holiday Niseko! We're delighted to confirm your booking with us.<br>
                 
-                Please take a moment to review your booking confirmation below to ensure everything is correct.<br>
+                Please take a moment to review your booking confirmation below.<br>
                 
                 <strong>To secure your booking a 20% non-refundable deposit is required within 3 days</strong>
                 </div>
@@ -1187,8 +1187,6 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
                 </ul>
                 
                 <a href="https://holidayniseko.evoke.jp/public/yourbooking.jsf?id={self.eId}&em={self.guest_email}">Pay securely in your local currency here</a><br>
-
-                <em>We've partnered with Flywire to offer payments in your local currency, reducing exchange fees while we receive payment in JPY.</em><br>
 
                 <strong>Important Links</strong>
                 <ul>

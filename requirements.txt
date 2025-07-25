@@ -11,3 +11,5 @@ gspread
 google-auth
 plotly
 phonenumbers
+google-analytics-data
+plotly
