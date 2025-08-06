@@ -787,20 +787,19 @@ class Booking:
 
             Hi {self.given_name},  
 
-            I hope this email finds you well. This is a friendly reminder that 
-            we have not yet received payment for your upcoming accommodation at {self.vendor}.
+            Thank you for choosing Holiday Niseko for your upcoming stay at {self.vendor}.
 
-            Please note that your reservation will be automatically canceled in 
-            48 hours if payment is not received.  
+            **Payment Required**   
+            Payment for your reservation is still pending. To secure your booking, please complete payment within 24 hours.
             
-            You can complete your payment securely through the following link:  
-            <a href='{self.payment_link}'> View invoices and make payments here </a>   
+            <a href='{self.payment_link}'> Complete your payment here **→** </a>   
 
-            If you have already processed the payment or wish to cancel your 
-            booking, please let us know immediately.  
-
-            Should you have any questions or concerns, our team is here to help.
+            **Important:** Your reservation may be cancelled if payment isn't received within 24 hours.
             
+            If you have paid or need any assistance, please contact us immediately. 
+             
+            Looking forward to welcoming you to Niseko.
+                        
             """,
             unsafe_allow_html=True)
 

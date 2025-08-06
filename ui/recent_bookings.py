@@ -17,7 +17,181 @@ class RecentBookingsManager:
     
     def __init__(self):
         self.initialize_session_state()
-    
+
+
+
+    def calculate_booking_rate(self, bookings, filter_option, start_date=None, end_date=None):
+        """
+        Calculate booking rate based on active bookings and selected filter period
+        
+        Args:
+            bookings: List of booking dictionaries
+            filter_option: Selected time period filter
+            start_date: Start date for custom range
+            end_date: End date for custom range
+        
+        Returns:
+            Float: Active bookings per day
+        """
+        # Only count active bookings
+        active_bookings = [b for b in bookings if b.get('is_active', True)]
+        active_count = len(active_bookings)
+        
+        if active_count == 0:
+            return 0
+        
+        # Calculate days in period (same logic as main UI)
+        if filter_option == "Last 24 hours":
+            days_in_period = 1
+        elif filter_option == "2 days":
+            days_in_period = 2
+        elif filter_option == "3 days":
+            days_in_period = 3
+        elif filter_option == "5 days":
+            days_in_period = 5
+        elif filter_option == "7 days":
+            days_in_period = 7
+        elif filter_option == "14 days":
+            days_in_period = 14
+        elif filter_option == "Custom" and start_date and end_date:
+            delta = end_date - start_date
+            days_in_period = delta.days + 1
+        else:
+            days_in_period = 7  # Default fallback
+        
+        # Calculate active bookings per day
+        return active_count / days_in_period if days_in_period > 0 else 0
+
+    def apply_quick_filter_preset(self, preset_name, location):
+        """Apply a preset combination of filters"""
+        
+        presets = {
+            "🔥 Unpaid Accom - 2 weeks": {  # ✅ Fixed to match dropdown exactly
+                "period": "14 days",  # ✅ Use existing option
+                "content": "Unpaid", 
+                "property_type": "🏠 Accommodation",
+                "season": "❄️ Winter",  # ✅ With emoji
+                "view": "Buttons"
+            },
+            "📋 Daily Operations": {
+                "period": "Last 24 hours",
+                "content": "All",
+                "property_type": "🏠 HN Managed", 
+                "season": "❄️ Winter",
+                "view": "Buttons"
+            },
+            "💰 Book & Pay Focus": {
+                "period": "7 days",
+                "content": "Book & Pay",
+                "property_type": "🏠 Accommodation",
+                "season": "All Seasons", 
+                "view": "Table"
+            },
+            "🏠 HN Properties Only": {
+                "period": "7 days",
+                "content": "All",
+                "property_type": "🏠 HN Managed",
+                "season": "❄️ Winter",
+                "view": "Buttons"
+            },
+            "🏢 Partner Properties": {
+                "period": "7 days", 
+                "content": "All",
+                "property_type": "🏢 Non-Managed",
+                "season": "❄️ Winter",
+                "view": "Table"
+            },
+            "🎿 Services Overview": {
+                "period": "7 days",
+                "content": "All", 
+                "property_type": "🎿 Services",
+                "season": "❄️ Winter",
+                "view": "Table"
+            },
+            "🔧 Internal Requests": {
+                "period": "30 days",
+                "content": "🔧 Internal Requests",
+                "property_type": "All",
+                "season": "All Seasons",
+                "view": "Buttons"
+            },
+            "👥 Staff Bookings": {
+                "period": "7 days",
+                "content": "Staff",
+                "property_type": "🏠 Accommodation", 
+                "season": "All Seasons",
+                "view": "Buttons"
+            },
+            "📊 Weekly Summary": {
+                "period": "7 days",
+                "content": "All",
+                "property_type": "All",
+                "season": "All Seasons", 
+                "view": "Table"
+            },
+            "🌐 OTA Bookings": {
+                "period": "3 days",
+                "content": "All",
+                "property_type": "🏠 Accommodation",
+                "season": "❄️ Winter",
+                "view": "Table"
+            }
+        }
+        
+        if preset_name in presets:
+            preset = presets[preset_name]
+            
+            # Update session state with preset values
+            period_options = ["Last 24 hours", "2 days", "3 days", "5 days", "7 days", "14 days", "Custom"]
+            content_options = ["All", "Unpaid", "Book & Pay", "Staff", "Airbnb", "Booking.com", "Expedia", "Jalan", "🔧 Internal Requests"]
+            property_options = ["All", "🏠 Accommodation", "🏠 HN Managed", "🏢 Non-Managed", "🎿 Services"]
+            season_options = ["All Seasons", "❄️ Winter", "☀️ Summer"]
+            view_options = ["Buttons", "Table"]
+            
+            # Map preset values to indices and verify they exist
+            try:
+                period_index = period_options.index(preset["period"])
+                content_index = content_options.index(preset["content"])
+                property_index = property_options.index(preset["property_type"])
+                season_index = season_options.index(preset["season"])
+                view_index = view_options.index(preset["view"])
+                
+                # Debug output
+                print(f"🔧 Applying preset: {preset_name}")
+                print(f"   Period: {preset['period']} (found at index {period_index})")
+                print(f"   Content: {preset['content']} (found at index {content_index})")
+                print(f"   Property: {preset['property_type']} (found at index {property_index})")
+                print(f"   Season: {preset['season']} (found at index {season_index})")
+                print(f"   View: {preset['view']} (found at index {view_index})")
+                
+                # Force update session state
+                st.session_state[f"recent_filter_select_{location}"] = preset["period"]
+                st.session_state[f"content_filter_{location}"] = preset["content"]
+                st.session_state[f"management_type_filter_{location}"] = preset["property_type"]
+                st.session_state[f"season_filter_{location}"] = preset["season"]
+                st.session_state[f"view_mode_{location}"] = preset["view"]
+                
+                # Clear the last filter key to force data refresh
+                if f'last_filter_key_{location}' in st.session_state:
+                    del st.session_state[f'last_filter_key_{location}']
+                
+                # Show success message (optional - can remove to reduce noise)
+                # st.success(f"✅ Applied preset: {preset_name}")
+                
+                # DON'T call st.rerun() here - it causes infinite loop!
+                # The session state changes will trigger the UI update automatically
+                
+            except ValueError as e:
+                st.error(f"❌ Error applying preset '{preset_name}': {e}")
+                st.error(f"Check that all preset values exist in dropdown options:")
+                st.write(f"Available periods: {period_options}")
+                st.write(f"Available content: {content_options}")
+                st.write(f"Available properties: {property_options}")
+                st.write(f"Available seasons: {season_options}")
+                st.write(f"Available views: {view_options}")
+        else:
+            st.error(f"❌ Preset '{preset_name}' not found in configuration")
+
     def initialize_session_state(self):
         """Initialize session state variables for recent bookings"""
         if "recent_bookings_data" not in st.session_state:
@@ -492,12 +666,36 @@ class RecentBookingsManager:
         is_book_and_pay = booking_source == 'Book & Pay'
         is_staff_booking = booking_source.startswith('Staff (')
         
-        return (
+        # Get payment status
+        amount_received_raw = booking.get('amount_received_raw', 0)
+        sell_price_raw = booking.get('sell_price_raw', 0)
+        is_active = booking.get('is_active', True)
+        
+        # A booking is unpaid if:
+        # 1. It's a Book & Pay or Staff booking
+        # 2. It's still active (not cancelled)
+        # 3. Amount received is 0
+        # 4. Sell price is greater than 0 (has a value)
+        is_unpaid = (
             (is_book_and_pay or is_staff_booking) and
-            booking.get('is_active') == True and
-            booking.get('amount_received_raw', 0) == 0 and
-            booking.get('sell_price_raw', 0) > 0
+            is_active == True and
+            amount_received_raw == 0 and
+            sell_price_raw > 0
         )
+        
+        # Debug output for troubleshooting (remove in production)
+        booking_id = booking.get('e_id', booking.get('booking_id', 'unknown'))
+        if booking_id in ['2447637', '2447618']:  # Debug specific bookings from screenshot
+            print(f"🔍 Debug booking {booking_id}:")
+            print(f"   Source: '{booking_source}'")
+            print(f"   is_book_and_pay: {is_book_and_pay}")
+            print(f"   is_staff_booking: {is_staff_booking}")
+            print(f"   amount_received_raw: {amount_received_raw}")
+            print(f"   sell_price_raw: {sell_price_raw}")
+            print(f"   is_active: {is_active}")
+            print(f"   Final result: is_unpaid = {is_unpaid}")
+        
+        return is_unpaid
     
     def _filter_created_last_24_hours(self, parsed_bookings):
         """Filter bookings to only show those created in the last 24 hours"""
@@ -558,7 +756,7 @@ class RecentBookingsManager:
             # Extract Holiday Niseko managed properties specifically
             if isinstance(data, dict) and "Holiday Niseko" in data:
                 managed_properties = data["Holiday Niseko"]
-                st.info(f"Loaded {len(managed_properties)} Holiday Niseko managed properties")
+                # st.info(f"Loaded {len(managed_properties)} Holiday Niseko managed properties")
                 return managed_properties
             else:
                 st.warning("Could not find 'Holiday Niseko' key in property management file")
@@ -914,10 +1112,85 @@ class RecentBookingsManager:
         Display the recent bookings section with optimized loading
         """
         
+
+
         # Use container to isolate this component
         with st.container():
             # Split into two rows for better organization
             
+
+            # Quick Filter Presets Row
+            # st.markdown("#### Quick Filters")
+            quick_col1, quick_col2, quick_col3 = st.columns([2, 1, 3])
+
+            # Replace the selectbox section in your display_recent_bookings_section method:
+
+            with quick_col1:
+                # Don't try to control the selectbox value - let Streamlit handle it
+                quick_filter_preset = st.selectbox(
+                    "Choose a preset:",
+                    [
+                        "-- Select Quick Filter --",
+                        "🔥 Unpaid Accom - 2 weeks", 
+                        "📋 Daily Operations",
+                        "💰 Book & Pay Focus", 
+                        "🏠 HN Properties Only",
+                        "🏢 Partner Properties",
+                        "🎿 Services Overview",
+                        "🔧 Internal Requests",
+                        "👥 Staff Bookings", 
+                        "📊 Weekly Summary",
+                        "🌐 OTA Bookings"
+                    ],
+                    index=0,
+                    key=f"quick_filter_preset_{location}"
+                )
+
+                # Only apply preset if it's not the default and hasn't been applied yet
+                if quick_filter_preset != "-- Select Quick Filter --":
+                    # Check if this preset was already applied
+                    last_applied = st.session_state.get(f"last_applied_preset_{location}", "")
+                    
+                    if last_applied != quick_filter_preset:
+                        # Apply the preset
+                        self.apply_quick_filter_preset(quick_filter_preset, location)
+                        
+                        # Remember what we applied
+                        st.session_state[f"last_applied_preset_{location}"] = quick_filter_preset
+                        
+                        # Show a temporary success message
+                        st.success(f"✅ Applied preset: {quick_filter_preset}")
+                        
+                        # Force a rerun to refresh the data with new filters
+                        st.rerun()
+
+            with quick_col2:
+                if st.button("🔄 Reset All", key=f"reset_filters_{location}", help="Reset all filters to defaults"):
+                    # Clear ALL session state for this location
+                    keys_to_clear = [
+                        f"recent_filter_select_{location}",
+                        f"content_filter_{location}",
+                        f"management_type_filter_{location}",
+                        f"season_filter_{location}",
+                        f"view_mode_{location}",
+                        f"quick_filter_preset_{location}"
+                    ]
+                    for key in keys_to_clear:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+
+            with quick_col3:
+                current_period = st.session_state.get(f"recent_filter_select_{location}", "3 days")
+                current_content = st.session_state.get(f"content_filter_{location}", "All")
+                current_property = st.session_state.get(f"management_type_filter_{location}", "🏠 Accommodation")
+                
+                with st.container():
+                    st.info(f"""
+                    🔍 **Currently Showing:**  
+                    📅 **{current_period}** | 🎯 **{current_content}** | 🏢 **{current_property}**
+                    """)
+
             # Row 1: Title and main controls
             col1, col2, col3, col4, col5, col6 = st.columns([1.3, 1, 1, 1.2, 1, 1])
             
@@ -927,8 +1200,8 @@ class RecentBookingsManager:
             with col2:
                 filter_option = st.selectbox(
                     "Period:",
-                    ["Last 24 hours", "2 days", "3 days", "5 days", "7 days", "Custom"],
-                    index=0,
+                    ["Last 24 hours", "2 days", "3 days", "5 days", "7 days", "14 days", "Custom"],
+                    index=2,
                     key=f"recent_filter_select_{location}",
                     label_visibility="collapsed"
                 )
@@ -948,7 +1221,7 @@ class RecentBookingsManager:
                 management_type_filter = st.selectbox(
                     "Property Type:",
                     ["All", "🏠 Accommodation", "🏠 HN Managed", "🏢 Non-Managed", "🎿 Services"],
-                    index=0,
+                    index=1,
                     key=f"management_type_filter_{location}",
                     label_visibility="collapsed"
                 )
@@ -959,7 +1232,7 @@ class RecentBookingsManager:
                 season_filter = st.selectbox(
                     "Season:",
                     ["All Seasons", "❄️ Winter", "☀️ Summer"],
-                    index=0,
+                    index=1,
                     key=f"season_filter_{location}",
                     label_visibility="collapsed"
                 )
@@ -1021,6 +1294,8 @@ class RecentBookingsManager:
                         result = self.fetch_recent_bookings("last_n_days", custom_days=5, force_refresh=True)
                     elif filter_option == "7 days":
                         result = self.fetch_recent_bookings("last_n_days", custom_days=7, force_refresh=True)
+                    elif filter_option == "14 days":
+                        result = self.fetch_recent_bookings("last_n_days", custom_days=14, force_refresh=True)
                     elif filter_option == "Custom" and start_date and end_date:
                         result = self.fetch_recent_bookings(
                             "date_range",
@@ -1050,6 +1325,8 @@ class RecentBookingsManager:
                         time_filtered_bookings = self._filter_created_last_n_days(parsed_bookings, 5)
                     elif filter_option == "7 days":
                         time_filtered_bookings = self._filter_created_last_n_days(parsed_bookings, 7)
+                    elif filter_option == "14 days":
+                        time_filtered_bookings = self._filter_created_last_n_days(parsed_bookings, 14)
                     elif filter_option == "Custom" and start_date and end_date:
                         time_filtered_bookings = self._filter_created_custom_date_range(parsed_bookings, start_date, end_date)
                     else:
@@ -1126,21 +1403,53 @@ class RecentBookingsManager:
                     
                     else:
                         # Display regular stats in a cleaner format
-                        st.markdown("---")
-                        stats_col1, stats_col2, stats_col3 = st.columns(3)
+                        # Calculate days in the selected period
+                        if filter_option == "Last 24 hours":
+                            days_in_period = 1
+                        elif filter_option == "2 days":
+                            days_in_period = 2
+                        elif filter_option == "3 days":
+                            days_in_period = 3
+                        elif filter_option == "7 days":
+                            days_in_period = 7
+                        elif filter_option == "14 days":
+                            days_in_period = 14
+                        elif filter_option == "Custom" and start_date and end_date:
+                            delta = end_date - start_date
+                            days_in_period = delta.days + 1
+                        else:
+                            days_in_period = 1
+
+                        # Calculate bookings per day using filtered data
+                        # Calculate bookings per day using only active bookings
+                        bookings_per_day = self.calculate_booking_rate(
+                            unique_filtered_bookings, 
+                            filter_option, 
+                            start_date, 
+                            end_date
+                        )
                         
+
+
+                        # Display stats
+                        st.markdown("---")
+                        stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
+
                         with stats_col1:
                             st.metric("Total Bookings", f"{total}", f"{active} Active, {cancelled} Cancelled")
-                        
+
                         with stats_col2:
                             total_revenue = accom_total + service_total
                             st.metric("Revenue", f"¥{total_revenue:,.0f}", f"{accom_count} ACCOM + {service_count} SVC")
-                        
+
                         with stats_col3:
                             if unpaid_count > 0:
                                 st.metric("⚠️ Unpaid", unpaid_count, "Need attention", delta_color="inverse")
                             else:
                                 st.metric("✅ Payments", "All paid", "")
+
+                        with stats_col4:
+                            st.metric("Per Day", f"{bookings_per_day:.1f}", f"Over {days_in_period} days")
                 else:
                     st.info("No data available")
             
