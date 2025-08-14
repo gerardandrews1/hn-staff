@@ -308,6 +308,7 @@ def display_booking_details(booking):
             with email_tabs[1]:  # Guest Services - includes ski rentals
                 # Regular guest services upsell
                 booking.write_gsg_upsell()
+                booking.write_alt_gsg_upsell()
                 
                 # Add ski rental emails if they exist
                 if booking.has_ski_rentals():

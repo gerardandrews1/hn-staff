@@ -231,6 +231,10 @@ def main():
             ('engagement', 2, 2)
         ]
         
+        # Get the last data points for annotations
+        current_last_point = current_weekly.iloc[-1] if not current_weekly.empty else None
+        last_year_last_point = last_year_weekly.iloc[-1] if not last_year_weekly.empty else None
+        
         for metric, row, col in metrics_data:
             # This year data
             fig_trends.add_trace(
@@ -259,6 +263,44 @@ def main():
                 ),
                 row=row, col=col
             )
+            
+            # Add end point annotations for current year
+            if current_last_point is not None:
+                fig_trends.add_annotation(
+                    x=current_last_point['week_start'],
+                    y=current_last_point[metric],
+                    text=f"{current_last_point['week_start'].strftime('%b %d')}<br>{current_last_point[metric]:,.0f}" if metric != 'engagement' else f"{current_last_point['week_start'].strftime('%b %d')}<br>{current_last_point[metric]:.1f}%",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowcolor='black',
+                    arrowsize=1,
+                    ax=20,
+                    ay=-20,
+                    bgcolor='white',
+                    bordercolor='black',
+                    borderwidth=1,
+                    font=dict(size=10, color='black'),
+                    row=row, col=col
+                )
+            
+            # Add end point annotations for last year
+            if last_year_last_point is not None:
+                fig_trends.add_annotation(
+                    x=last_year_last_point['week_start'],
+                    y=last_year_last_point[metric],
+                    text=f"{last_year_last_point['week_start'].strftime('%b %d')}<br>{last_year_last_point[metric]:,.0f}" if metric != 'engagement' else f"{last_year_last_point['week_start'].strftime('%b %d')}<br>{last_year_last_point[metric]:.1f}%",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowcolor='gray',
+                    arrowsize=1,
+                    ax=-20,
+                    ay=-20,
+                    bgcolor='white',
+                    bordercolor='gray',
+                    borderwidth=1,
+                    font=dict(size=10, color='gray'),
+                    row=row, col=col
+                )
         
         fig_trends.update_layout(
             height=550,
@@ -274,13 +316,13 @@ def main():
             )
         )
         
-        # Update all subplot axes with clean look (no gray background)
+        # Update all subplot axes with clean look and better date formatting
         fig_trends.update_xaxes(
             showgrid=False,
             zeroline=True, 
             zerolinecolor='black',
             zerolinewidth=1,
-            tickformat='%b',
+            tickformat='%b %d',  # Show both month and day
             dtick='M1'
         )
         fig_trends.update_yaxes(
@@ -292,6 +334,10 @@ def main():
         )
         
         st.plotly_chart(fig_trends, use_container_width=True, config={'displayModeBar': False})
+        
+        # Add a data range indicator below the chart
+        if current_last_point is not None:
+            st.caption(f"📅 Data range: {start_date} to {end_date} | Latest data point: {current_last_point['week_start'].strftime('%B %d, %Y')}")
         
         # Summary metrics
         current_totals = current_weekly.agg({

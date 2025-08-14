@@ -62,79 +62,32 @@ class RecentBookingsManager:
         # Calculate active bookings per day
         return active_count / days_in_period if days_in_period > 0 else 0
 
+
+
     def apply_quick_filter_preset(self, preset_name, location):
         """Apply a preset combination of filters"""
         
         presets = {
-            "🔥 Unpaid Accom - 2 weeks": {  # ✅ Fixed to match dropdown exactly
+            "Unpaid Accom - 2 weeks": {  # ✅ Fixed to match dropdown exactly
                 "period": "14 days",  # ✅ Use existing option
                 "content": "Unpaid", 
                 "property_type": "🏠 Accommodation",
                 "season": "❄️ Winter",  # ✅ With emoji
                 "view": "Buttons"
             },
-            "📋 Daily Operations": {
-                "period": "Last 24 hours",
-                "content": "All",
-                "property_type": "🏠 HN Managed", 
-                "season": "❄️ Winter",
-                "view": "Buttons"
-            },
-            "💰 Book & Pay Focus": {
+            "OTA Bookings (7 days)": {
                 "period": "7 days",
-                "content": "Book & Pay",
-                "property_type": "🏠 Accommodation",
-                "season": "All Seasons", 
-                "view": "Table"
-            },
-            "🏠 HN Properties Only": {
-                "period": "7 days",
-                "content": "All",
-                "property_type": "🏠 HN Managed",
-                "season": "❄️ Winter",
-                "view": "Buttons"
-            },
-            "🏢 Partner Properties": {
-                "period": "7 days", 
-                "content": "All",
-                "property_type": "🏢 Non-Managed",
-                "season": "❄️ Winter",
-                "view": "Table"
-            },
-            "🎿 Services Overview": {
-                "period": "7 days",
-                "content": "All", 
-                "property_type": "🎿 Services",
-                "season": "❄️ Winter",
-                "view": "Table"
-            },
-            "🔧 Internal Requests": {
-                "period": "30 days",
-                "content": "🔧 Internal Requests",
-                "property_type": "All",
-                "season": "All Seasons",
-                "view": "Buttons"
-            },
-            "👥 Staff Bookings": {
-                "period": "7 days",
-                "content": "Staff",
-                "property_type": "🏠 Accommodation", 
-                "season": "All Seasons",
-                "view": "Buttons"
-            },
-            "📊 Weekly Summary": {
-                "period": "7 days",
-                "content": "All",
-                "property_type": "All",
-                "season": "All Seasons", 
-                "view": "Table"
-            },
-            "🌐 OTA Bookings": {
-                "period": "3 days",
-                "content": "All",
+                "content": "OTA",
                 "property_type": "🏠 Accommodation",
                 "season": "❄️ Winter",
-                "view": "Table"
+                "view": "Buttons"
+            },
+            "Direct Bookings (7 days)": {
+                "period": "7 days",
+                "content": "Direct",
+                "property_type": "🏠 Accommodation",
+                "season": "❄️ Winter",
+                "view": "Buttons"
             }
         }
         
@@ -143,7 +96,7 @@ class RecentBookingsManager:
             
             # Update session state with preset values
             period_options = ["Last 24 hours", "2 days", "3 days", "5 days", "7 days", "14 days", "Custom"]
-            content_options = ["All", "Unpaid", "Book & Pay", "Staff", "Airbnb", "Booking.com", "Expedia", "Jalan", "🔧 Internal Requests"]
+            content_options = ["All", "Unpaid", "Book & Pay", "Staff", "Direct", "OTA", "Airbnb", "Booking.com", "Expedia", "Jalan"]
             property_options = ["All", "🏠 Accommodation", "🏠 HN Managed", "🏢 Non-Managed", "🎿 Services"]
             season_options = ["All Seasons", "❄️ Winter", "☀️ Summer"]
             view_options = ["Buttons", "Table"]
@@ -191,6 +144,9 @@ class RecentBookingsManager:
                 st.write(f"Available views: {view_options}")
         else:
             st.error(f"❌ Preset '{preset_name}' not found in configuration")
+
+
+
 
     def initialize_session_state(self):
         """Initialize session state variables for recent bookings"""
@@ -482,7 +438,7 @@ class RecentBookingsManager:
         if items:
             # Calculate total sell price from all items - prioritize priceSell
             for item in items:
-                price_sell = item.get('priceSell', 0) or item.get('priceRetail', 0)
+                price_sell = item.get('priceSell', 0)
                 sell_price += price_sell
             
             first_item = items[0]
@@ -964,28 +920,24 @@ class RecentBookingsManager:
             
             if content_filter == "Unpaid":
                 include_booking = self._is_unpaid_book_and_pay(booking)
-            
             elif content_filter == "Book & Pay":
                 include_booking = booking.get('booking_source') == 'Book & Pay'
-            
             elif content_filter == "Staff":
                 include_booking = booking.get('booking_source', '').startswith('Staff (')
-            
             elif content_filter == "Airbnb":
                 include_booking = booking.get('booking_source') == 'Airbnb'
-            
             elif content_filter == "Booking.com":
                 include_booking = booking.get('booking_source') == 'Booking.com'
-            
             elif content_filter == "Expedia":
                 include_booking = booking.get('booking_source') == 'Expedia'
-            
             elif content_filter == "Jalan":
                 include_booking = booking.get('booking_source') == 'Jalan'
-            
-            elif content_filter == "Internal Requests":
-                extent = booking.get('extent', '')
-                include_booking = extent == 'REQUEST_INTERNAL'
+            elif content_filter == "OTA":
+                booking_source = booking.get('booking_source', '')
+                include_booking = booking_source in ['Airbnb', 'Booking.com', 'Expedia', 'Jalan']
+            elif content_filter == "Direct":
+                booking_source = booking.get('booking_source', '')
+                include_booking = booking_source == 'Book & Pay' or booking_source.startswith('Staff (')
             
             if include_booking:
                 filtered.append(booking)
@@ -1131,16 +1083,9 @@ class RecentBookingsManager:
                     "Choose a preset:",
                     [
                         "-- Select Quick Filter --",
-                        "🔥 Unpaid Accom - 2 weeks", 
-                        "📋 Daily Operations",
-                        "💰 Book & Pay Focus", 
-                        "🏠 HN Properties Only",
-                        "🏢 Partner Properties",
-                        "🎿 Services Overview",
-                        "🔧 Internal Requests",
-                        "👥 Staff Bookings", 
-                        "📊 Weekly Summary",
-                        "🌐 OTA Bookings"
+                        "Unpaid Accom - 2 weeks",
+                        "OTA Bookings (7 days)",
+                        "Direct Bookings (7 days)"
                     ],
                     index=0,
                     key=f"quick_filter_preset_{location}"
@@ -1184,11 +1129,13 @@ class RecentBookingsManager:
                 current_period = st.session_state.get(f"recent_filter_select_{location}", "3 days")
                 current_content = st.session_state.get(f"content_filter_{location}", "All")
                 current_property = st.session_state.get(f"management_type_filter_{location}", "🏠 Accommodation")
+                current_season = st.session_state.get(f"season_filter_{location}", "❄️ Winter")
+
                 
                 with st.container():
                     st.info(f"""
                     🔍 **Currently Showing:**  
-                    📅 **{current_period}** | 🎯 **{current_content}** | 🏢 **{current_property}**
+                    📅 **{current_period}** | **{current_content}** | **{current_property}** | **{current_season}**
                     """)
 
             # Row 1: Title and main controls
@@ -1210,12 +1157,12 @@ class RecentBookingsManager:
                 # Enhanced filter dropdown with Internal Requests highlighted
                 content_filter = st.selectbox(
                     "Filter:",
-                    ["All", "Unpaid", "Book & Pay", "Staff", "Airbnb", "Booking.com", "Expedia", "Jalan", "🔧 Internal Requests"],
+                    ["All", "Unpaid", "Book & Pay", "Staff", "Direct", "OTA", "Airbnb", "Booking.com", "Expedia", "Jalan"],
                     index=0,
                     key=f"content_filter_{location}",
                     label_visibility="collapsed"
                 )
-            
+                            
             with col4:
                 # Combined Management/Type filter with Accommodation option added
                 management_type_filter = st.selectbox(
@@ -1279,7 +1226,7 @@ class RecentBookingsManager:
             last_filter_key = st.session_state.get(f'last_filter_key_{location}', '')
             
             # Only fetch data if filter changed or forced refresh
-            if current_filter_key != last_filter_key or force_refresh:
+            if (current_filter_key != last_filter_key or force_refresh) and not st.session_state.get('using_recent', False):
                 st.session_state[f'last_filter_key_{location}'] = current_filter_key
                 
                 with st.spinner("Loading recent bookings..."):
@@ -1382,74 +1329,55 @@ class RecentBookingsManager:
                     unpaid_bookings = [b for b in unique_filtered_bookings if self._is_unpaid_book_and_pay(b)]
                     unpaid_count = len(unpaid_bookings)
                     
-                    # Special handling for Internal Requests display
-                    if clean_content_filter == "Internal Requests":
-                        internal_accom = [b for b in unique_filtered_bookings if b['booking_type'] == 'ACCOMMODATION']
-                        internal_service = [b for b in unique_filtered_bookings if b['booking_type'] == 'SERVICE']
-                        
-                        st.markdown("---")
-                        st.markdown("#### 🔧 Internal Requests Summary")
-                        
-                        metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
-                        
-                        with metrics_col1:
-                            st.metric("Total Internal", f"{total}", f"{active} Active, {cancelled} Cancelled")
-                        
-                        with metrics_col2:
-                            st.metric("Accommodation", len(internal_accom), f"¥{sum([b['sell_price_raw'] for b in internal_accom]):,.0f}")
-                        
-                        with metrics_col3:
-                            st.metric("Services", len(internal_service), f"¥{sum([b['sell_price_raw'] for b in internal_service]):,.0f}")
-                    
+              
+                    # Display regular stats in a cleaner format
+                    # Calculate days in the selected period
+                    if filter_option == "Last 24 hours":
+                        days_in_period = 1
+                    elif filter_option == "2 days":
+                        days_in_period = 2
+                    elif filter_option == "3 days":
+                        days_in_period = 3
+                    elif filter_option == "7 days":
+                        days_in_period = 7
+                    elif filter_option == "14 days":
+                        days_in_period = 14
+                    elif filter_option == "Custom" and start_date and end_date:
+                        delta = end_date - start_date
+                        days_in_period = delta.days + 1
                     else:
-                        # Display regular stats in a cleaner format
-                        # Calculate days in the selected period
-                        if filter_option == "Last 24 hours":
-                            days_in_period = 1
-                        elif filter_option == "2 days":
-                            days_in_period = 2
-                        elif filter_option == "3 days":
-                            days_in_period = 3
-                        elif filter_option == "7 days":
-                            days_in_period = 7
-                        elif filter_option == "14 days":
-                            days_in_period = 14
-                        elif filter_option == "Custom" and start_date and end_date:
-                            delta = end_date - start_date
-                            days_in_period = delta.days + 1
+                        days_in_period = 1
+
+                    # Calculate bookings per day using filtered data
+                    # Calculate bookings per day using only active bookings
+                    bookings_per_day = self.calculate_booking_rate(
+                        unique_filtered_bookings, 
+                        filter_option, 
+                        start_date, 
+                        end_date
+                    )
+                    
+
+
+                    # Display stats
+                    st.markdown("---")
+                    stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
+
+                    with stats_col1:
+                        st.metric("Total Bookings", f"{total}", f"{active} Active, {cancelled} Cancelled")
+
+                    with stats_col2:
+                        total_revenue = accom_total + service_total
+                        st.metric("Revenue", f"¥{total_revenue:,.0f}", f"{accom_count} ACCOM + {service_count} SVC")
+
+                    with stats_col3:
+                        if unpaid_count > 0:
+                            st.metric("⚠️ Unpaid", unpaid_count, "Need attention", delta_color="inverse")
                         else:
-                            days_in_period = 1
+                            st.metric("✅ Payments", "All paid", "")
 
-                        # Calculate bookings per day using filtered data
-                        # Calculate bookings per day using only active bookings
-                        bookings_per_day = self.calculate_booking_rate(
-                            unique_filtered_bookings, 
-                            filter_option, 
-                            start_date, 
-                            end_date
-                        )
-                        
-
-
-                        # Display stats
-                        st.markdown("---")
-                        stats_col1, stats_col2, stats_col3, stats_col4 = st.columns(4)
-
-                        with stats_col1:
-                            st.metric("Total Bookings", f"{total}", f"{active} Active, {cancelled} Cancelled")
-
-                        with stats_col2:
-                            total_revenue = accom_total + service_total
-                            st.metric("Revenue", f"¥{total_revenue:,.0f}", f"{accom_count} ACCOM + {service_count} SVC")
-
-                        with stats_col3:
-                            if unpaid_count > 0:
-                                st.metric("⚠️ Unpaid", unpaid_count, "Need attention", delta_color="inverse")
-                            else:
-                                st.metric("✅ Payments", "All paid", "")
-
-                        with stats_col4:
-                            st.metric("Per Day", f"{bookings_per_day:.1f}", f"Over {days_in_period} days")
+                    with stats_col4:
+                        st.metric("Per Day", f"{bookings_per_day:.1f}", f"Over {days_in_period} days")
                 else:
                     st.info("No data available")
             

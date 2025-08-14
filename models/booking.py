@@ -815,7 +815,7 @@ class Booking:
 Accommodation is booked - now add your extras!""") 
                 
                 st.write("""
-- Equipment Rentals – Early bird rates available  
+- Equipment Rentals 
 - Airport Transfers 
 - Ski/Snowboard Lessons
 - Lift Passes
@@ -832,6 +832,39 @@ Booking ID: {self.eId}
 Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full pricing and service details.
 
 *Book your extras early - popular services fill up fast!*
+                """,
+                    unsafe_allow_html=True)
+        except TypeError:
+            return
+        
+
+
+    def write_alt_gsg_upsell(self):
+        """Write template for guest service upsell"""
+        try: 
+            if not self.guest_email or "booking.com" in self.guest_email:
+                return
+
+            gs_upsell_expander = st.expander("GS Transfer Upsell", expanded=False)
+            with gs_upsell_expander:
+                st.write(f"""
+While we are in contact, have you organised how you are geting to and from Niseko?""") 
+                
+                st.write("""
+You can book airport transfers and more via the link below.
+""")
+                
+                st.write(f"""
+
+<a href='{"https://holidayniseko.com/my-booking"}'> Book Your Transfers Now **→** </a>  
+
+**Login Details**  
+Email: {self.guest_email}  
+Booking ID: {self.eId} 
+
+Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full pricing and service details.
+
+*Book early - popular dates fill up fast!*
                 """,
                     unsafe_allow_html=True)
         except TypeError:
