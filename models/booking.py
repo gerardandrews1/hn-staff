@@ -848,7 +848,7 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
             gs_upsell_expander = st.expander("GS Transfer Upsell", expanded=False)
             with gs_upsell_expander:
                 st.write(f"""
-While we are in contact, have you organised how you are geting to and from Niseko?""") 
+While we are in contact, have you organised how you are getting to and from Niseko?""") 
                 
                 st.write("""
 You can book airport transfers and more via the link below.

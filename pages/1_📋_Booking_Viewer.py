@@ -284,8 +284,13 @@ def display_booking_details(booking):
     # Display invoices and emails in right column
     with right_col:
         # Invoices container - with borders to clearly separate
-        with st.expander(label="Invoices & Payments", expanded = True):
+        # Invoices container - with borders to clearly separate
+        # Invoices container - with borders to clearly separate
+        # Invoices container - with borders to clearly separate
+        with st.expander(label="Invoices & Payments", expanded=True):
             booking.write_payment_df()
+            # Add Flywire link below the table
+            st.markdown("[Flywire Login](https://app.flywire.com/#/app-login)")
         
         # Add a small spacer
         st.write("")

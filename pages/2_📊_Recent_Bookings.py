@@ -153,8 +153,6 @@ def main():
             avg_nights = total_nights / total_bookings if total_bookings > 0 else 0
             
             # Calculate booking rate using the fixed function
-            booking_rate = calculate_booking_rate# Calculate booking rate based on selected filter period (consistent with main UI)
-            # Get the filter period from the main UI session state
             filter_option = st.session_state.get("recent_filter_select_page", "7 days")
             start_date = st.session_state.get("recent_start_date_page", None)
             end_date = st.session_state.get("recent_end_date_page", None)
@@ -172,6 +170,10 @@ def main():
                 days_in_period = 7
             elif filter_option == "14 days":
                 days_in_period = 14
+            elif filter_option == "Month to Date":
+                today = datetime.date.today()
+                month_start = today.replace(day=1)
+                days_in_period = (today - month_start).days + 1
             elif filter_option == "Custom" and start_date and end_date:
                 delta = end_date - start_date
                 days_in_period = delta.days + 1
@@ -551,14 +553,17 @@ def main():
             st.metric("Avg Nights/Booking", f"{avg_nights:.1f}")
             
             # Show booking rate calculation details
-            # Calculate booking rate using only active bookings (consistent with main UI)
             filter_option = st.session_state.get("recent_filter_select_page", "7 days")
             start_date = st.session_state.get("recent_start_date_page", None)
             end_date = st.session_state.get("recent_end_date_page", None)
 
-            booking_rate = manager.calculate_booking_rate(bookings, filter_option, start_date, end_date)
-
-
+            if filter_option == "Month to Date":
+                today = datetime.date.today()
+                month_start = today.replace(day=1)
+                days_in_period = (today - month_start).days + 1
+                booking_rate = len(bookings) / days_in_period if days_in_period > 0 else 0
+            else:
+                booking_rate = calculate_booking_rate(bookings)
 
             st.metric("Booking Rate", f"{booking_rate:.1f}/day")
             
@@ -619,6 +624,7 @@ def main():
             📥 **Enhanced Export** - CSV with all new fields  
             📈 **Smart Metrics** - Total nights, countries, averages  
             ⚡ **Fixed Booking Rate** - Based on actual booking date range  
+            📅 **Month to Date** - Filter for current month tracking  
             
             **Data Sources:**
             - Check-in: `items[0].checkIn`
