@@ -328,8 +328,9 @@ def display_booking_details(booking):
             
             with email_tabs[2]:  # OTA Emails
                 booking.write_first_ota_email()
+                booking.write_follow_up_email_verification()
                 booking.write_second_OTA_email()
-                booking.write_OTA_email()
+                # booking.write_OTA_email()
             
             with email_tabs[3]:  # Payment
                 booking.write_invoice_sentences()

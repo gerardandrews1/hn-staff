@@ -982,6 +982,37 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
         except TypeError:
             return
 
+    def write_follow_up_email_verification(self):
+        """Write template for follow-up email verification (only if customer has no email)"""
+        try:
+            # Only show if guest has no email or email is booking.com placeholder
+            if hasattr(self, 'guest_email') and self.guest_email and "booking.com" not in self.guest_email:
+                return
+
+            follow_up_expander = st.expander("Follow-up Email Verification", expanded=False)
+            
+            with follow_up_expander:
+                st.markdown(f"""
+                
+                Hi {self.given_name},
+
+                We still need you to verify your email for your upcoming stay. This will help ensure a smooth arrival and seamless holiday.
+
+                **Please complete verification here:** https://holidayniseko.com/email/{self.eId}
+
+                This quick step provides:
+                - Your door codes and entry instructions
+                - Check-in details
+                - Access to our local support team
+                - Booking options for airport transfers, lift tickets, ski rentals, and more
+
+                Need help? Contact us at res@holidayniseko.com
+                    
+                    """,
+                            unsafe_allow_html=True)
+        except (TypeError, AttributeError):
+            return
+
 
 
     def write_booking_confirmation(self):
