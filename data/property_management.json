@@ -167,6 +167,7 @@
         "Birch Grove",
         "Fumoto",
         "Green House",
+        "Hanazaki Townhouses",
         "Hibiki",
         "Hikaru",
         "Himawari",
@@ -175,6 +176,7 @@
         "Hurry Slowly A",
         "The Fount Niseko",
         "Ikigai",
+        "Inari Chalet",
         "Ise",
         "Ishi Couloir",
         "Kabayama House",
@@ -185,8 +187,10 @@
         "La Plagne",
         "Lodge Mori",
         "Midori House",
+        "Mizuki Onsen Townhouses",
         "Mountain Butterfly",
         "Nero",
+        "Neyuki",
         "Koyo Onsen Chalet",
         "Olaf House",
         "Nichigo",
@@ -213,12 +217,12 @@
         "Yuki no Taki 2",
         "Yukine",
         "Yukon Apartments",
+        "Yuniseko",
         "Yutaka 1",
         "Yutaka 2",
         "Zangetsu",
         "Takayama",
         "Ummei",
-        "Yotei Chalets",
-        "Neyuki"
+        "Yotei Chalets"        
     ]
 }

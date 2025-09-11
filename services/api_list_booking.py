@@ -7,7 +7,7 @@ import streamlit as st
 from ratelimit import limits
 
 # decorator to throttle api calls 
-@limits(calls = 15, period = 120)
+@limits(calls = 30, period = 120)
 def call_api(ebook_id, api_id, api_key):
     
     """

@@ -136,23 +136,32 @@ def main():
     # Additional features section
     st.markdown("---")
     
+    # In pages/2_📊_Recent_Bookings.py - Update the analytics section
     with st.expander("📈 Analytics", expanded=False):
         # Show summary of new fields if data is available
         if hasattr(st.session_state, 'filtered_bookings_data') and st.session_state.filtered_bookings_data:
             bookings = st.session_state.filtered_bookings_data
-            st.write(len(bookings), "BOOKS")
             
-            # Key Metrics Row
+            # FILTER OUT CANCELLED BOOKINGS for analytics
+            active_bookings = [b for b in bookings if b.get('is_active', True)]
+            
+            st.write(f"{len(active_bookings)} ACTIVE BOOKINGS ({len(bookings)} total including {len(bookings) - len(active_bookings)} cancelled)")
+            
+            # Key Metrics Row - USE ONLY ACTIVE BOOKINGS
             st.subheader("Key Metrics")
-            col1, col2, col3, col4, col5 = st.columns(5)
+            col1, col2, col3, col4, col5, col6 = st.columns(6)  # CHANGED: Added 6th column
             
-            # Calculate totals
-            total_gross = sum(b.get('sell_price_raw', 0) for b in bookings if b.get('sell_price_raw', 0) > 0)
-            total_nights = sum(b.get('nights', 0) for b in bookings if b.get('nights', 0) > 0)
-            total_bookings = len(bookings)
+            # Calculate totals from ACTIVE bookings only
+            total_gross = sum(b.get('sell_price_raw', 0) for b in active_bookings if b.get('sell_price_raw', 0) > 0)
+            total_nights = sum(b.get('nights', 0) for b in active_bookings if b.get('nights', 0) > 0)
+            total_bookings = len(active_bookings)  # Use active bookings count
             avg_nights = total_nights / total_bookings if total_bookings > 0 else 0
             
-            # Calculate booking rate using the fixed function
+            # ADDED: Calculate average cost per booking
+            bookings_with_revenue = [b for b in active_bookings if b.get('sell_price_raw', 0) > 0]
+            avg_cost_per_booking = total_gross / len(bookings_with_revenue) if len(bookings_with_revenue) > 0 else 0
+            
+            # Calculate booking rate using active bookings only
             filter_option = st.session_state.get("recent_filter_select_page", "7 days")
             start_date = st.session_state.get("recent_start_date_page", None)
             end_date = st.session_state.get("recent_end_date_page", None)
@@ -180,53 +189,70 @@ def main():
             else:
                 days_in_period = 7  # Default fallback
 
-            # Calculate booking rate using filter period (same as main UI)
+            # Calculate booking rate using ACTIVE bookings only
             booking_rate = total_bookings / days_in_period if days_in_period > 0 else 0
             
+            # Rest of metrics calculations using active_bookings...
             with col1:
                 st.metric(
                     label="Total Gross Revenue",
                     value=f"${total_gross:,.2f}" if total_gross > 0 else "N/A",
-                    help="Sum of all sell prices"
+                    help="Sum of all sell prices (active bookings only)"
                 )
             
             with col2:
                 st.metric(
                     label="Total Nights",
                     value=f"{total_nights:,}" if total_nights > 0 else "N/A",
-                    help="Sum of all booking nights"
+                    help="Sum of all booking nights (active bookings only)"
                 )
             
             with col3:
                 st.metric(
-                    label="Total Bookings",
+                    label="Active Bookings",
                     value=f"{total_bookings:,}",
-                    help="Number of bookings in current filter"
+                    help="Number of active bookings in current filter"
                 )
             
             with col4:
                 st.metric(
                     label="Avg Nights/Booking",
                     value=f"{avg_nights:.1f}" if avg_nights > 0 else "N/A",
-                    help="Average nights per booking"
+                    help="Average nights per active booking"
                 )
             
             with col5:
                 st.metric(
                     label="Booking Rate",
                     value=f"{booking_rate:.1f}/day" if booking_rate > 0 else "N/A",
-                    help="Average bookings per day based on actual booking date range"
+                    help="Average active bookings per day"
+                )
+            
+            # ADDED: 6th metric column
+            with col6:
+                st.metric(
+                    label="Avg Cost/Booking",
+                    value=f"${avg_cost_per_booking:,.2f}" if avg_cost_per_booking > 0 else "N/A",
+                    help="Average revenue per active booking with revenue"
                 )
             
             st.markdown("---")
             
-            # Charts Row
+            # Charts Row - USE ONLY ACTIVE BOOKINGS
             col1, col2 = st.columns(2)
             
-            # 1. COUNTRY BREAKDOWN - Plotly version that actually sorts
+            # 1. COUNTRY BREAKDOWN - Use only active bookings, include those without country
             with col1:
                 st.subheader("Country Breakdown")
-                countries = [b.get('country', 'Unknown') for b in bookings if b.get('country') and b.get('country') != 'N/A']
+                # UPDATED: Include bookings without country as "Unknown"
+                countries = []
+                for b in active_bookings:
+                    country = b.get('country', '')
+                    if country and country != 'N/A' and country.strip():
+                        countries.append(country)
+                    else:
+                        countries.append('Unknown')
+                
                 if countries:
                     country_counts = pd.Series(countries).value_counts()
                     
@@ -259,18 +285,22 @@ def main():
                     )
                     st.plotly_chart(fig, use_container_width=True)
                     
-                    # Summary stats
+                    # UPDATED: Summary stats with unknown count
                     total_countries = len(set(countries))
                     top_country = country_counts.index[0]
                     top_country_share = (country_counts.iloc[0] / len(countries)) * 100
-                    st.write(f"**{total_countries} countries** • Top: {top_country} ({top_country_share:.0f}%)")
+                    unknown_count = country_counts.get('Unknown', 0)
+                    if unknown_count > 0:
+                        st.write(f"**{total_countries} countries** • Top: {top_country} ({top_country_share:.0f}%) • {unknown_count} Unknown")
+                    else:
+                        st.write(f"**{total_countries} countries** • Top: {top_country} ({top_country_share:.0f}%)")
                 else:
                     st.info("No country data available")
             
-            # 2. BOOKING CHANNELS - Plotly version that actually sorts
+            # 2. BOOKING CHANNELS - Use only active bookings
             with col2:
                 st.subheader("Booking Channels")
-                booking_sources = [b.get('booking_source', 'Unknown') for b in bookings if b.get('booking_source')]
+                booking_sources = [b.get('booking_source', 'Unknown') for b in active_bookings if b.get('booking_source')]
                 if booking_sources:
                     # Group staff bookings together
                     grouped_sources = []
@@ -319,13 +349,13 @@ def main():
                 else:
                     st.info("No booking channel data available")
             
-            # Second row of charts
+            # Second row of charts - USE ONLY ACTIVE BOOKINGS
             col3, col4 = st.columns(2)
             
-            # 3. NIGHTS DISTRIBUTION - Plotly version that actually sorts
+            # 3. NIGHTS DISTRIBUTION - Use only active bookings
             with col3:
                 st.subheader("Nights Distribution")
-                nights_data = [b.get('nights', 0) for b in bookings if b.get('nights', 0) > 0]
+                nights_data = [b.get('nights', 0) for b in active_bookings if b.get('nights', 0) > 0]
                 if nights_data:
                     # Count nights and get top 10
                     night_counts = pd.Series(nights_data).value_counts().sort_index()
@@ -364,13 +394,13 @@ def main():
                 else:
                     st.info("No nights data available")
             
-            # 4. REVENUE BY CHANNEL - Plotly version that actually sorts
+            # 4. REVENUE BY CHANNEL - Use only active bookings
             with col4:
                 st.subheader("Revenue by Channel")
                 if booking_sources:
-                    # Calculate revenue by booking source (with staff grouping)
+                    # Calculate revenue by booking source (with staff grouping) - ACTIVE BOOKINGS ONLY
                     revenue_by_source = {}
-                    for booking in bookings:
+                    for booking in active_bookings:  # Changed from bookings to active_bookings
                         source = booking.get('booking_source', 'Unknown')
                         revenue = booking.get('sell_price_raw', 0)
                         if source and revenue > 0:
@@ -423,14 +453,14 @@ def main():
                 else:
                     st.info("No booking channel data available")
             
-            # Additional insights section
+            # Additional insights section - USE ONLY ACTIVE BOOKINGS
             st.markdown("---")
             st.subheader("Quick Insights")
             
             insights_col1, insights_col2 = st.columns(2)
             
             with insights_col1:
-                # Top performing metrics
+                # Top performing metrics - ACTIVE BOOKINGS ONLY
                 if countries and booking_sources:
                     country_counts = pd.Series(countries).value_counts().sort_values(ascending=False)
                     grouped_sources = []
@@ -451,9 +481,12 @@ def main():
                     if nights_data:
                         avg_revenue_per_night = (total_gross / total_nights) if total_nights > 0 else 0
                         st.write(f"Revenue per night: **${avg_revenue_per_night:.2f}**")
+                    
+                    if avg_cost_per_booking > 0:
+                        st.write(f"Avg cost per booking: **${avg_cost_per_booking:.2f}**")
             
             with insights_col2:
-                # Diversity metrics
+                # Diversity metrics - ACTIVE BOOKINGS ONLY
                 unique_countries = len(set(countries)) if countries else 0
                 grouped_sources = []
                 for source in booking_sources:
@@ -487,7 +520,8 @@ def main():
             
             st.subheader("Key Metrics")
             st.info("Load booking data to see total gross revenue, nights, and performance metrics")
-    
+
+
     # Sidebar with additional controls
     with st.sidebar:
         st.header("🔧 Controls")
