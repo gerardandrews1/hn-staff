@@ -402,11 +402,17 @@ class Booking:
             st.write(f":telephone_receiver:", self.guest_phone)
         
         # Display email and payment links if not from booking.com
+        # Display email and payment links if not from booking.com
         try:
             if self.guest_email and "booking.com" not in self.guest_email:
                 st.write(f":email: {self.guest_email}")
-                if self.guest_email != self.guest_additional_email:
-                    st.write(f":email: {self.guest_additional_email}")    
+                
+                # Only show additional email if it exists AND is different from primary email
+                if (self.guest_additional_email and 
+                    self.guest_additional_email != self.guest_email and 
+                    str(self.guest_additional_email).strip() != ""):
+                    st.write(f":email: {self.guest_additional_email}")
+                
                 st.write("---")
                 
                 if self.payment_link:
