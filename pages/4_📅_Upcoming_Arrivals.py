@@ -1,293 +1,190 @@
 # -*- coding: utf-8 -*-
-import json
-import pandas as pd
+# pages/4_📅_Upcoming_Arrivals.py
 import streamlit as st
-from datetime import datetime, timedelta, date
-from typing import Optional, Dict
-
+import pandas as pd
+from datetime import datetime, timedelta
 from services.holiday_niseko_api import HolidayNisekoAPI
-from services.api_list_booking import call_api
-from models.booking import Booking
+from utils.normalize_upcoming_arrivals import normalize_upcoming_arrivals
 
-st.set_page_config(page_title="Upcoming Arrivals", page_icon="📅", layout="wide")
+st.set_page_config(page_title="Upcoming Arrivals", page_icon="🏂", layout="wide")
 
+st.title("Upcoming Arrivals")
 
-# ---------- Secrets / Client ----------
-def _get_api():
-    cfg = st.secrets.get("holidayniseko", {})
-    missing = [k for k in ("USERNAME", "PASSWORD") if k not in cfg]
-    if missing:
-        st.error(f"Missing secrets in [holidayniseko]: {missing}")
-        st.stop()
-    base_url = cfg.get("BASE_URL", "https://holidayniseko.com/api")
+# Initialize API
+try:
+    api = HolidayNisekoAPI(
+        username=st.secrets["hn_username"],
+        password=st.secrets["hn_password"]
+    )
+except:
     try:
-        return HolidayNisekoAPI(cfg["USERNAME"], cfg["PASSWORD"], base_url=base_url)
-    except Exception as e:
-        st.exception(e)
-        st.stop()
-
-
-api = _get_api()
-
-
-# ---------- Helper Functions ----------
-def fetch_individual_booking_data(eid: str) -> Optional[Dict]:
-    """
-    Fetch individual booking using RoomBoss API (same as booking viewer).
-    """
-    try:
-        response = call_api(
-            eid,
-            st.secrets["roomboss"]["api_id"], 
-            st.secrets["roomboss"]["api_key"]
+        api = HolidayNisekoAPI(
+            username=st.secrets["username"],
+            password=st.secrets["password"]
         )
+    except:
+        api = HolidayNisekoAPI(
+            username=st.secrets["holidayniseko"]["USERNAME"],
+            password=st.secrets["holidayniseko"]["PASSWORD"]
+        )
+
+# Date picker
+col1, col2, col3 = st.columns([2, 1, 1])
+
+with col1:
+    arrival_date = st.date_input(
+        "Arrivals on:",
+        value=datetime.now().date(),
+        key="arrival_date",
+        label_visibility="collapsed"
+    )
+
+with col2:
+    quick_options = {
+        "Today": datetime.now().date(),
+        "Tomorrow": datetime.now().date() + timedelta(days=1),
+        "In 2 days": datetime.now().date() + timedelta(days=2),
+        "In 3 days": datetime.now().date() + timedelta(days=3),
+        "Next week": datetime.now().date() + timedelta(weeks=1),
+    }
+    
+    quick_select = st.selectbox(
+        "Quick Select",
+        options=["— Quick Select —"] + list(quick_options.keys()),
+        key="quick_select",
+        label_visibility="collapsed"
+    )
+    
+    if quick_select != "— Quick Select —":
+        arrival_date = quick_options[quick_select]
+        st.rerun()
+
+with col3:
+    find_button = st.button("Find arrivals", type="primary", use_container_width=True)
+
+target_date_str = arrival_date.strftime("%Y-%m-%d")
+
+if find_button:
+    status_placeholder = st.empty()
+    
+    try:
+        status_placeholder.info(f"Fetching bookings for {target_date_str}...")
         
-        if response.ok:
-            booking = Booking(json.loads(response.text), api_type="listBooking")
-            # Ensure booking attribution is called (this should happen in __init__ but let's be sure)
-            if not hasattr(booking, 'booking_source_1'):
-                booking.attribute_booking()
-            return extract_display_data_from_booking(booking)
-        else:
-            st.error(f"Error fetching booking {eid}: {response.status_code}")
-            return None
-    except Exception as e:
-        st.error(f"Error fetching booking {eid}: {str(e)}")
-        return None
-
-
-def extract_display_data_from_booking(booking: Booking) -> Dict:
-    """
-    Extract the same data columns as the current dataframe from a Booking object.
-    """
-    # Process room data to set dates (same logic as booking viewer)
-    process_room_data_for_display(booking)
-    
-    # Format invoice and payment amounts
-    invoiced_formatted = ""
-    if hasattr(booking, 'amount_invoiced') and booking.amount_invoiced > 0:
-        invoiced_formatted = f"¥{booking.amount_invoiced:,.0f}"
-    
-    payment_formatted = ""
-    if hasattr(booking, 'amount_received') and booking.amount_received > 0:
-        payment_formatted = f"¥{booking.amount_received:,.0f}"
-    
-    # Extract room type from first room
-    room_type = ""
-    if hasattr(booking, 'room_list_todf') and booking.room_list_todf:
-        room_type = booking.room_list_todf[0][1]  # Room name is second item
-    
-    # Format eID with commas (as string)
-    eid_raw = getattr(booking, 'eId', '')
-    # st.write(f"DEBUG: eid_raw = {eid_raw}, type = {type(eid_raw)}")
-    try:
-        if eid_raw and str(eid_raw).isdigit():
-            eid_formatted = f"{int(eid_raw):,}"
-    #         st.write(f"DEBUG: formatted eid = {eid_formatted}")
-    #     else:
-    #         eid_formatted = str(eid_raw)
-    #         st.write(f"DEBUG: not digit, using raw = {eid_formatted}")
-    except (ValueError, TypeError) as e:
-        eid_formatted = str(eid_raw)
-        # st.write(f"DEBUG: error formatting = {e}, using raw = {eid_formatted}")
-    
-    # Get booking source with fallback
-    try:
-        # Make sure attribution has been called
-        if not hasattr(booking, 'booking_source_1'):
-            booking.attribute_booking()
+        clean_date = target_date_str.replace("-", "")
+        all_bookings = api.get_all_bookings(params={"date": clean_date})
+        
+        if all_bookings:
+            df = normalize_upcoming_arrivals(all_bookings)
             
-        booking_source_1 = getattr(booking, 'booking_source_1', 'Unknown')
-        booking_source_2 = getattr(booking, 'booking_source_2', 'Unknown')
-        
-        # Format booking source for display
-        if booking_source_1 != "Unknown" and booking_source_2 != "Unknown" and booking_source_1 != booking_source_2:
-            booking_source = f"{booking_source_1} - {booking_source_2}"
-        elif booking_source_1 != "Unknown":
-            booking_source = booking_source_1
-        elif booking_source_2 != "Unknown":
-            booking_source = booking_source_2
+            if not df.empty:
+                if "active" in df.columns:
+                    df_active = df[df["active"] != 0].copy()
+                else:
+                    df_active = df.copy()
+                
+                st.session_state["arrivals_data"] = df_active
+                st.session_state["arrivals_date"] = target_date_str
+                status_placeholder.success(f"Found {len(df_active)} active arrivals")
+            else:
+                status_placeholder.warning("No bookings found.")
         else:
-            booking_source = "Unknown"
+            status_placeholder.warning("No bookings found.")
+            
     except Exception as e:
-        # Fallback if attribution fails
-        booking_source = "Unknown"
-        print(f"Attribution error for {eid_raw}: {str(e)}")
+        status_placeholder.error(f"Error: {e}")
+        st.exception(e)
+
+if "arrivals_data" in st.session_state and st.session_state.get("arrivals_date") == target_date_str:
+    df = st.session_state["arrivals_data"]
     
-    return {
-        'eid': eid_formatted,
-        'arrival_date': getattr(booking, 'accom_checkin', ''),
-        'departure_date': getattr(booking, 'accom_checkout', ''),
-        'nights': getattr(booking, 'nights', ''),
-        'property_name': getattr(booking, 'vendor', ''),
-        'room_type': room_type,
-        'guest_name': getattr(booking, 'full_name', ''),
-        'guest_email': getattr(booking, 'guest_email', ''),
-        'guest_phone': getattr(booking, 'guest_phone', ''),
-        'booking_source': booking_source,
-        'invoiced_formatted': invoiced_formatted,
-        'payment_formatted': payment_formatted,
-        'online_check_in': ""  # Placeholder as before
-    }
-
-
-def process_room_data_for_display(booking):
-    """Process room data to set necessary attributes for display"""
-    if not hasattr(booking, 'room_list_todf') or not booking.room_list_todf:
-        return
-        
-    all_checkins = []
-    all_checkouts = []
-    
-    for room in booking.room_list_todf:
-        all_checkins.append(room[2])  # Check-in is third item
-        all_checkouts.append(room[3])  # Check-out is fourth item
-    
-    if all_checkins:
-        booking.accom_checkin = min(all_checkins)
-    if all_checkouts:
-        booking.accom_checkout = max(all_checkouts)
-
-
-# ---------- UI ----------
-st.subheader("📅 Upcoming Arrivals")
-
-left, right = st.columns([2, 3], gap="large")
-
-with left:
-    st.subheader("Pick a date")
-    manual_date = st.date_input("Arrivals on:", datetime.now().date() + timedelta(days=1))
-
-with left:
-    # st.subheader("Quick select")
-    presets = {
-        "— Quick Select —": None,
-        "In 21 days": 21,
-        "In 14 days": 14,
-        "In 7 days": 7,
-        "In 2 days": 2,
-        "Tomorrow (1 day)": 1,
-    }
-    choice = st.selectbox(" ", list(presets.keys()), index=0, label_visibility="collapsed")
-    qs = presets[choice]
-
-target_date = manual_date if qs is None else (date.today() + timedelta(days=qs))
-st.caption(f"Target arrival date: **{target_date:%Y-%m-%d}**")
-
-# st.info("This calls Holiday Niseko API for booking IDs, then RoomBoss API for detailed data.")
-
-
-# ---------- Actions ----------
-if st.button("Find arrivals", type="primary"):
-    compact = target_date.strftime("%Y%m%d")
-
-    # Step 1: Get list of active eIDs from Holiday Niseko API
-    with st.spinner(f"Fetching booking list for {compact}..."):
-        try:
-            active_eids = api.get_active_eids_by_checkin_date(compact)
-        except Exception as e:
-            st.error("Request failed.")
-            st.exception(e)
-            st.stop()
-
-    if not active_eids:
-        st.warning("No active arrivals found for that date.")
-        st.stop()
-
-    st.success(f"Found **{len(active_eids)}** active bookings. Fetching details...")
-    
-    # Step 2: Fetch detailed data for each booking using RoomBoss API
-    booking_data = []
-    progress_bar = st.progress(0)
-    
-    for i, eid in enumerate(active_eids):
-        progress_bar.progress((i + 1) / len(active_eids), text=f"Fetching booking {eid} ({i+1}/{len(active_eids)})")
-        booking_details = fetch_individual_booking_data(eid)
-        if booking_details:
-            booking_data.append(booking_details)
-    
-    progress_bar.empty()
-    
-    if not booking_data:
-        st.warning("No booking details could be retrieved.")
-        st.stop()
-    
-    # Step 3: Create DataFrame with the same structure as before
-    df = pd.DataFrame(booking_data)
-    
-
-    # Apply the same date filter as before
-    if 'arrival_date' in df.columns:
-        df['arrival_date'] = pd.to_datetime(df['arrival_date'], errors='coerce').dt.date
-        df = df[df['arrival_date'] == target_date]
-    
-    if df.empty:
-        st.warning("No arrivals found for that exact date after processing.")
-        st.stop()
-
-    # Create the column mapping for display (same as before)
+    # Select and reorder only the columns you want
     column_mapping = {
-        "eid": "eId",
-        "arrival_date": "arrival",
-        "departure_date": "departure",
+        "eid": "eid",
+        "guest_name": "name",
         "nights": "nights",
-        "property_name": "propertyname",
+        "property_name": "property_name",
         "room_type": "room_type",
-        "guest_name": "guest_name",
         "guest_email": "email",
-        "guest_phone": "guest_phone",
-        "booking_source": "source",
-        "invoiced_formatted": "invoiced",
-        "payment_formatted": "received",
-        "online_check_in": "online check-in"
+        "guest_phone": "phone",
+        "arrival_date": "arrival_date",
+        "departure_date": "departure_date",
+        "invoices_total_amount": "invoices_total_amount",
+        "payments_total_amount": "payments_total_amount",
+        "source": "source"
     }
-
-    # Get the columns we can actually display
-    display_columns = list(column_mapping.keys())
+    
+    # Check which columns exist and select them
+    available_cols = [col for col in column_mapping.keys() if col in df.columns]
+    
+    if len(available_cols) < len(column_mapping):
+        missing = set(column_mapping.keys()) - set(available_cols)
+        st.warning(f"Missing columns: {missing}")
+    
+    df_display = df[available_cols].copy()
     
     # Rename for display
-    df_display = df.copy()
-    if 'eid' in df_display.columns:
-        df_display['eid'] = df_display['eid'].astype(str)
-    df_display = df_display.rename(columns=column_mapping)
-    display_names = list(column_mapping.values())
-
-    st.success(f"Retrieved details for **{len(df)}** arrivals.")
-
-    st.dataframe(
-    df_display[display_names], 
-    use_container_width=True, 
-    hide_index=True,
-    column_config={
-        "eId": st.column_config.NumberColumn(
-            "eId",
-            format="%d"
-        )
+    df_display.columns = [column_mapping.get(col, col) for col in df_display.columns]
+    
+    st.success(f"Showing {len(df_display)} active arrivals for {target_date_str}")
+    
+    # Function to highlight rows where invoice != payment
+    def highlight_payment_mismatch(row):
+        if row['invoices_total_amount'] != row['payments_total_amount']:
+            return ['background-color: #ffcccc'] * len(row)
+        return [''] * len(row)
+    
+    # Apply styling
+    styled_df = df_display.style.apply(highlight_payment_mismatch, axis=1)
+    
+    # Configure column widths
+    column_config = {
+        "eid": st.column_config.TextColumn("EID", width="small"),
+        "name": st.column_config.TextColumn("Name", width="medium"),
+        "nights": st.column_config.NumberColumn("Nights", width="small"),
+        "property_name": st.column_config.TextColumn("Property", width="medium"),
+        "room_type": st.column_config.TextColumn("Room Type", width="medium"),
+        "email": st.column_config.TextColumn("Email", width="medium"),
+        "phone": st.column_config.TextColumn("Phone", width="small"),
+        "arrival_date": st.column_config.DateColumn("Arrival", width="small"),
+        "departure_date": st.column_config.DateColumn("Departure", width="small"),
+        "invoices_total_amount": st.column_config.NumberColumn("Invoice Total", width="small", format="%.0f"),
+        "payments_total_amount": st.column_config.NumberColumn("Payment Total", width="small", format="%.0f"),
+        "source": st.column_config.TextColumn("Source", width="small"),
     }
-)
-
-    # Downloads (using original column names for data integrity)
-    st.download_button(
-        "Download CSV",
-        df[display_columns].to_csv(index=False).encode("utf-8"),
-        file_name=f"upcoming_arrivals_{target_date:%Y%m%d}.csv",
-        mime="text/csv",
+    
+    # Display with styling
+    st.dataframe(
+        styled_df,
+        use_container_width=True, 
+        hide_index=True, 
+        height=None,
+        column_config=column_config
     )
-    st.download_button(
-        "Download JSON",
-        df[display_columns].to_json(orient="records").encode("utf-8"),
-        file_name=f"upcoming_arrivals_{target_date:%Y%m%d}.json",
-        mime="application/json",
-    )
-
-    # Optional quick summary by property
-    with st.expander("Summary by property"):
-        if 'property_name' in df.columns:
-            grp = (
-                df.groupby(["property_name"], dropna=False)
-                  .agg(arrivals=("eid", "count"))
-                  .sort_values("arrivals", ascending=False)
-            )
-            st.dataframe(grp, use_container_width=True)
-        else:
-            st.write("Property name data not available for summary.")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        csv = df_display.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Download CSV",
+            data=csv,
+            file_name=f"arrivals_{target_date_str}.csv",
+            mime="text/csv"
+        )
+    
+    # with col2:
+    #     json_str = df_display.to_json(orient='records', indent=2)
+    #     st.download_button(
+    #         label="Download JSON",
+    #         data=json_str,
+    #         file_name=f"arrivals_{target_date_str}.json",
+    #         mime="application/json"
+    #     )
+    
+    # with st.expander("Summary by property", expanded=False):
+    #     if "property_name" in df.columns:
+    #         summary = df.groupby("property_name").size().reset_index(name="count")
+    #         summary = summary.sort_values("count", ascending=False)
+    #         st.dataframe(summary, use_container_width=True, hide_index=True)
+    #     else:
+    #         st.info("Property name column not available.")

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Any, Union
 
 from utils.booking_viewer_utils import (
-    create_cognito_link,
+    # create_cognito_link,
     connect_to_gspread,
     get_cognito_sheet_data,
     get_cognito_info,
@@ -107,6 +107,8 @@ class Booking:
     def parse_lead_guest(self, lead_guest_dict):
         """Parse lead guest information from the guest dictionary"""
         self.guest_email = lead_guest_dict.get("email", None)
+        self.guest_additional_email = lead_guest_dict.get("additionalEmail", None)
+
         self.guest_phone = lead_guest_dict.get("phoneNumber", None)
         self.given_name = lead_guest_dict.get("givenName", None)
         self.family_name = lead_guest_dict.get("familyName", None)
@@ -403,6 +405,8 @@ class Booking:
         try:
             if self.guest_email and "booking.com" not in self.guest_email:
                 st.write(f":email: {self.guest_email}")
+                if self.guest_email != self.guest_additional_email:
+                    st.write(f":email: {self.guest_additional_email}")    
                 st.write("---")
                 
                 if self.payment_link:
@@ -413,6 +417,7 @@ class Booking:
                 st.write("---")
         except TypeError:
             st.write(self.guest_email)
+
     
     def write_payment_df(self):
         """Display payment information table"""
@@ -675,63 +680,85 @@ class Booking:
         if self.notes:
             st.markdown(f"###### Notes")
             st.markdown(self.notes)
-    
+
+
+
     def write_cognito(self):
         """
-        Check and display if customer has completed Cognito online check-in
+        Display Cognito check-in status with clear visual hierarchy
         """
         # Skip if not managed by Holiday Niseko
         if self.managed_by != "Holiday Niseko":
             front_desk_manual_link = "https://docs.google.com/document/d/1-R1zBxcY9sBP_ULDc7D0qaResj9OTU2s/r/edit/edit#heading=h.rus25g7i893t"
-            st.markdown(f"**Don't send Holiday Niseko online check-in** [FD MANUAL]({front_desk_manual_link})")
-            return
+            return None
         
         # Get Cognito data
         df = get_cognito_sheet_data()
+        
+        if df is None:
+            return {
+                'completed': False,
+                'phone': "Error loading sheet",
+                'arrival_time': "-",
+                'check_in_link': self.create_cognito_link(),
+                'debug': "Sheet data is None"
+            }
+        
         cognito_entry = get_cognito_info(str(self.eId), df)
         
         # Initialize values
         eId = "-"
         phone = "-"
         arv = "-"
+        debug_info = []
+        
+        # Collect debug info
+        if cognito_entry.empty:
+            debug_info.append(f"No match found for eId: {self.eId}")
+        else:
+            debug_info.append(f"Columns available: {', '.join(cognito_entry.columns.tolist())}")
         
         # Extract data if available
         try:
             eId = cognito_entry["HolidayNisekoReservationNumber"].values[0]
-        except Exception:
-            pass
+            debug_info.append(f"Found eId: {eId}")
+        except Exception as e:
+            debug_info.append(f"Error getting eId: {str(e)}")
         
+        # Try to get phone number
         try:
-            phone = cognito_entry["Phone"].values[0]
-        except Exception:
-            pass
+            if not cognito_entry.empty and "Primary Contact Number" in cognito_entry.columns:
+                phone = cognito_entry["Primary Contact Number"].values[0]
+                debug_info.append(f"Found phone: {phone}")
+                if phone and str(phone).strip() != "":
+                    phone = str(phone).strip()
+                else:
+                    phone = "-"
+                    debug_info.append("Phone was empty")
+            else:
+                debug_info.append("'Primary Contact Number' column not found")
+        except Exception as e:
+            debug_info.append(f"Error getting phone: {str(e)}")
         
         try:
             arv = cognito_entry["ExpectedArrivalTimeInNiseko"].values[0] + " " + \
-                  cognito_entry["ArrivingInNisekoBy"].values[0]
-        except IndexError:
-            pass
+                cognito_entry["ArrivingInNisekoBy"].values[0]
+        except Exception as e:
+            debug_info.append(f"Error getting arrival: {str(e)}")
         
-        # Determine if Cognito is completed
-        if eId == "-":
-            cognito_done = "No"
-            # Create check-in link if not completed
-            link = create_cognito_link(
-                reservation_number=self.eId,
-                check_in=self.accom_checkin,
-                check_out=self.accom_checkout,
-                accommodation=self.vendor,
-                first_name=self.given_name,
-                last_name=self.family_name,
-                email=self.guest_email
-            )
-            st.write(f"[Online Check-in Link]({link})")
-        else:
-            cognito_done = "Yes"
+        # Determine completion status
+        is_completed = eId != "-"
         
-        # Display Cognito info
-        build_css_table(eId, phone, arv, cognito_done)
-    
+        # Return status data for the expander
+        return {
+            'completed': is_completed,
+            'phone': phone,
+            'arrival_time': arv,
+            'check_in_link': None if is_completed else self.create_cognito_link(),
+            'debug': " | ".join(debug_info)
+        }
+
+
     def write_days_to_checkin(self):
         """Calculate and display days until check-in or until check-out"""
         try:
@@ -1889,3 +1916,130 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
         """
         
         return table_html
+    
+
+
+    # Add this method to your Booking class in booking.py
+
+    def create_cognito_link(self):
+        """
+        Create a pre-filled Cognito Forms check-in link for this booking.
+        Returns the URL string.
+        """
+        # Validate required attributes exist
+        if not all(hasattr(self, attr) for attr in ['eId', 'accom_checkin', 'accom_checkout', 
+                                                    'vendor', 'given_name', 'family_name', 'guest_email']):
+            return None
+        
+        # Replace special characters in email
+        formatted_email = self.guest_email.replace('@', '%40')
+        
+        # Replace spaces with %20 for URL encoding
+        formatted_accommodation = self.vendor.replace(' ', '%20')
+        formatted_first_name = self.given_name.replace(' ', '%20').strip()
+        formatted_last_name = self.family_name.replace(' ', '%20').strip()
+        
+        # Format dates to ensure they use hyphens in the URL
+        formatted_check_in = self.accom_checkin.replace('/', '-')
+        formatted_check_out = self.accom_checkout.replace('/', '-')
+        
+        base_url = "https://www.cognitoforms.com/HolidayNiseko/HolidayNisekoOnlineCheckinGuestRegistration"
+        
+        entry_data = {
+            "HolidayNisekoReservationNumber": self.eId,
+            "CheckinDate": formatted_check_in,
+            "CheckoutDate": formatted_check_out,
+            "Accommodation": formatted_accommodation,
+            "LeadGuestFirstName": formatted_first_name,
+            "LeadGuestLastName": formatted_last_name,
+            "Email": formatted_email
+        }
+        
+        # Create the entry parameter with URL encoding
+        entry = "%7B"  # Opening curly brace
+        for i, (key, value) in enumerate(entry_data.items()):
+            if i > 0:
+                entry += "%2C"  # Comma
+            entry += f'%22{key}%22%3A%22{value}%22'  # "key":"value"
+        entry += "%7D"  # Closing curly brace
+        
+        return f"{base_url}?entry={entry}"
+    
+
+    def write_cognito(self):
+        """
+        Display Cognito check-in status with clear visual hierarchy
+        """
+        # Skip if not managed by Holiday Niseko
+        if self.managed_by != "Holiday Niseko":
+            front_desk_manual_link = "https://docs.google.com/document/d/1-R1zBxcY9sBP_ULDc7D0qaResj9OTU2s/r/edit/edit#heading=h.rus25g7i893t"
+            st.markdown(f"**Don't send Holiday Niseko online check-in** [FD MANUAL]({front_desk_manual_link})")
+            return
+        
+        # Get Cognito data
+        df = get_cognito_sheet_data()
+        cognito_entry = get_cognito_info(str(self.eId), df)
+        
+        # Initialize values
+        eId = "-"
+        phone = "-"
+        arv = "-"
+        
+        # Extract data if available
+        try:
+            eId = cognito_entry["HolidayNisekoReservationNumber"].values[0]
+        except Exception:
+            pass
+        
+        try:
+            phone = cognito_entry["Phone"].values[0]
+        except Exception:
+            pass
+        
+        try:
+            arv = cognito_entry["ExpectedArrivalTimeInNiseko"].values[0] + " " + \
+                cognito_entry["ArrivingInNisekoBy"].values[0]
+        except IndexError:
+            pass
+        
+        # Determine completion status
+        is_completed = eId != "-"
+        
+        # Return status data for the expander
+        return {
+            'completed': is_completed,
+            'phone': phone,
+            'arrival_time': arv,
+            'check_in_link': None if is_completed else self.create_cognito_link()
+        }
+    
+    def write_days_to_checkin(self):
+        """Calculate and display days until check-in or until check-out"""
+        try:
+            # Convert to dates (not datetime) for cleaner day calculations
+            date_checkin = pd.to_datetime(self.accom_checkin).date()
+            date_checkout = pd.to_datetime(self.accom_checkout).date()
+            today = datetime.datetime.now().date()
+            
+            days_to_checkin = (date_checkin - today).days
+            days_to_checkout = (date_checkout - today).days
+
+            # Future check-in
+            if days_to_checkin > 0:
+                st.write(f"{days_to_checkin} days until check-in")
+            
+            # Check-in is today
+            elif days_to_checkin == 0:
+                st.write("Check-in is today")
+            
+            # Already checked in - currently staying
+            elif days_to_checkout >= 0:
+                st.write(f"Currently staying: {days_to_checkout} days until check-out")
+            
+            # Already checked out
+            else:
+                st.write(f"Checked out {abs(days_to_checkout)} days ago")
+                
+        except Exception as e:
+            st.error(f"Error calculating check-in days: {str(e)}")
+            

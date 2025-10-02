@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
+# holiday_niseko_api.py
 import requests
+import streamlit as st
 from typing import Optional, Dict, Any, List
 
 class HolidayNisekoAPI:
@@ -16,16 +18,12 @@ class HolidayNisekoAPI:
         self.session = requests.Session()
         self.session.headers.update({
             "Content-Type": "application/json",
-            # Send multiple common header variants in case the API expects them
             "username": self.username,
             "password": self.password,
             "X-Username": self.username,
             "X-Password": self.password,
         })
-        # Also set HTTP Basic as a fallback
         self.session.auth = (self.username, self.password)
-
-    # ---------------- Core fetchers ----------------
 
     def get_bookings(self, params=None):
         url = f"{self.base_url}/bookings"
@@ -37,33 +35,28 @@ class HolidayNisekoAPI:
             )
         return r.json()
 
-
     def get_bookings_by_checkin_date(self, date: str) -> Dict[str, Any]:
-        """
-        Bookings filtered by check-in date via query param ?date=YYYYMMDD (or YYYY-MM-DD).
-        Returns the raw JSON payload (dict/list).
-        """
         clean_date = date.replace("-", "")
         if len(clean_date) != 8 or not clean_date.isdigit():
             raise ValueError(f"Invalid date format: {date}. Use YYYYMMDD or YYYY-MM-DD")
-
-        params = {"date": clean_date}
+        params = {"date>=": clean_date}  # Changed from "date" to "date>="
         return self.get_bookings(params=params)
 
     def get_all_bookings(self, params: Optional[Dict[str, Any]] = None, page_param: str = "page") -> List[Dict[str, Any]]:
-        """
-        Auto-pagination: keeps calling /bookings?page=N until no results or < 20 results.
-        Returns a flat list of booking dicts.
-        """
-        page = 1
+        page = 0
         out: List[Dict[str, Any]] = []
         base_params = dict(params or {})
 
         while True:
-            base_params[page_param] = page
-            payload = self.get_bookings(params=base_params)
+            current_params = base_params.copy()
+            current_params[page_param] = page
+            
+            try:
+                payload = self.get_bookings(params=current_params)
+            except Exception as e:
+                break
 
-            # Extract bookings from varied payload shapes
+            # Extract bookings
             if isinstance(payload, list):
                 bookings = payload
             elif "bookings" in payload:
@@ -71,7 +64,6 @@ class HolidayNisekoAPI:
             elif "data" in payload:
                 bookings = payload["data"]
             else:
-                # Fallback: unknown shape; try to treat as single booking
                 bookings = [payload] if payload else []
 
             if not bookings:
@@ -79,44 +71,43 @@ class HolidayNisekoAPI:
 
             out.extend(bookings)
 
+            # Stop if we got fewer than 20 bookings (last page)
             if len(bookings) < 20:
                 break
 
             page += 1
-
-        return out
-    
-    def get_active_eids_by_checkin_date(self, date: str) -> List[str]:
-        """
-        Get only the eIDs for active bookings on a specific check-in date.
-        Returns a list of eID strings.
-        """
-        payload = self.get_bookings_by_checkin_date(date)
+            
+            # Safety limit
+            if page > 100:
+                break
         
-        # Use your existing normalize function to get the data in a consistent format
+        return out
+        
+
+
+    def get_active_eids_by_checkin_date(self, date: str) -> List[str]:
+        clean_date = date.replace("-", "")
+        if len(clean_date) != 8 or not clean_date.isdigit():
+            raise ValueError(f"Invalid date format: {date}. Use YYYYMMDD or YYYY-MM-DD")
+        
+        all_bookings = self.get_all_bookings(params={"date": clean_date})
+        
         from utils.normalize_upcoming_arrivals import normalize_upcoming_arrivals
-        df = normalize_upcoming_arrivals(payload)
+        df = normalize_upcoming_arrivals(all_bookings)
         
         if df.empty:
             return []
         
-        # Filter for active bookings only
         if "active" in df.columns:
             df = df[df["active"] != 0]
         
-        # Extract eIds
         if "eid" in df.columns:
             return df["eid"].astype(str).tolist()
         else:
             return []
 
-    # ---------------- Utilities ----------------
-
     @staticmethod
     def flatten_dict(d: Dict[str, Any], parent_key: str = "", sep: str = "_") -> Dict[str, Any]:
-        """
-        Flatten nested dicts/lists for CSV/DF convenience.
-        """
         items = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k

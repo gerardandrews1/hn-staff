@@ -105,7 +105,7 @@ class RecentBookingsManager:
                 view_mode = st.selectbox(
                     "View:",
                     ["Buttons", "Table"],
-                    index=0,
+                    index=1,
                     key=f"view_mode_{location}"
                 )
             
@@ -299,8 +299,11 @@ class RecentBookingsManager:
                 seen.add(key)
                 unique.append(b)
         
-        return unique
-    
+        # FIXED: Sort by date after filtering to maintain most recent first
+        unique_sorted = self.sort_bookings_by_date(unique)
+        
+        return unique_sorted
+        
 
     def sort_bookings_by_date(self, bookings):
         """Sort bookings by creation date - most recent first"""

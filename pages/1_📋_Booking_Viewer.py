@@ -255,21 +255,26 @@ def fetch_booking_data(booking_id):
         st.error(f"Error: {str(e)}")
         return None
 
-
 def display_booking_details(booking):
     """Display booking details in a three-column layout with better spacing"""
     # Process room data first without displaying (just to set variables)
     process_room_data(booking)
+
+    # Initialize cognito_data to None
+    cognito_data = None
     
+    # Cognito Check-in Section - only get data if managed by Holiday Niseko
+    if booking.managed_by == "Holiday Niseko":
+        cognito_data = booking.write_cognito()
+
     # Create three columns with adjusted ratios for better fit
     left_col, middle_col, right_col = st.columns([0.6, 0.8, 1.2])
     
-    # Display booking info in left column - NO SKI RENTAL DETAILS
+    # Display booking info in left column
     with left_col:
         with st.container(border=True):
             booking.write_key_booking_info()
             booking.write_notes()
-            # Removed ski rental summary from here
     
     # Display email subject and room info in middle column
     with middle_col:
@@ -281,21 +286,63 @@ def display_booking_details(booking):
             # Room information
             booking.write_room_info(booking.room_list_todf)  
     
-    # Display invoices and emails in right column
+    # Display invoices, cognito, and emails in right column
     with right_col:
-        # Invoices container - with borders to clearly separate
-        # Invoices container - with borders to clearly separate
-        # Invoices container - with borders to clearly separate
-        # Invoices container - with borders to clearly separate
+        # Invoices container
         with st.expander(label="Invoices & Payments", expanded=True):
             booking.write_payment_df()
-            # Add Flywire link below the table
             st.markdown("[Flywire Login](https://app.flywire.com/#/app-login)")
         
-        # Add a small spacer
         st.write("")
         
-        # Emails container - also with borders
+        # Cognito Check-in Section - only display if managed by Holiday Niseko AND we have data
+        if booking.managed_by == "Holiday Niseko" and cognito_data:
+            is_completed = cognito_data['completed']
+            
+            # Calculate days to check-in for the message
+            try:
+                date_checkin = pd.to_datetime(booking.accom_checkin).date()
+                date_checkout = pd.to_datetime(booking.accom_checkout).date()
+                today = datetime.datetime.now().date()
+                
+                days_to_checkin = (date_checkin - today).days
+                days_to_checkout = (date_checkout - today).days
+                
+                # Determine the time status text
+                if days_to_checkin > 0:
+                    time_status = f"{days_to_checkin} days until check-in"
+                elif days_to_checkin == 0:
+                    time_status = "Check-in is today"
+                elif days_to_checkout >= 0:
+                    time_status = f"Currently staying: {days_to_checkout} days until check-out"
+                else:
+                    time_status = f"Checked out {abs(days_to_checkout)} days ago"
+            except:
+                time_status = ""
+            
+            if is_completed:
+                # Show completion info with blue/green background
+                message = f"✓ **Online Check-in Complete** • {time_status}\n\n"
+                message += f"**Phone Number:** {cognito_data['phone']}\n\n"
+                message += f"**Expected Arrival:** {cognito_data['arrival_time']}"
+                st.info(message)
+            else:
+                # Show warning with yellow/orange background
+                message = f"⚠ **Online Check-in Not Complete** • {time_status}\n\n"
+                if cognito_data['check_in_link']:
+                    message += f"[Click here to complete check-in]({cognito_data['check_in_link']})"
+                else:
+                    message += "Unable to generate check-in link - missing required information"
+                st.warning(message)
+        
+        elif booking.managed_by != "Holiday Niseko":
+            # Not Holiday Niseko managed - simple info message
+            front_desk_manual_link = "https://docs.google.com/document/d/1-R1zBxcY9sBP_ULDc7D0qaResj9OTU2s/r/edit/edit#heading=h.rus25g7i893t"
+            st.info(f"Not managed by Holiday Niseko - [check Front Desk Manual]({front_desk_manual_link})")
+        
+        st.write("")
+        
+        # Emails container
         with st.container(border=True):
             st.write("Emails")
             
@@ -310,18 +357,14 @@ def display_booking_details(booking):
             with email_tabs[0]:  # Booking Confirmation
                 booking.write_booking_confirmation()
             
-            with email_tabs[1]:  # Guest Services - includes ski rentals
-                # Regular guest services upsell
+            with email_tabs[1]:  # Guest Services
                 booking.write_gsg_upsell()
                 booking.write_alt_gsg_upsell()
                 
-                # Add ski rental emails if they exist
                 if booking.has_ski_rentals():
                     st.write("---")
-                    
                     booking.write_ski_rental_confirmation_emails()
 
-                 # Add Explore transfer emails if they exist
                 if booking.has_explore_transfers():
                     st.write("---")
                     booking.write_explore_transfer_confirmation_emails()
@@ -330,11 +373,11 @@ def display_booking_details(booking):
                 booking.write_first_ota_email()
                 booking.write_follow_up_email_verification()
                 booking.write_second_OTA_email()
-                # booking.write_OTA_email()
             
             with email_tabs[3]:  # Payment
                 booking.write_invoice_sentences()
                 booking.write_overdue_email()
+
 
 def process_room_data(booking):
     """Process room data to set necessary attributes without displaying"""
@@ -515,11 +558,7 @@ def main():
         # Display recent bookings from API in main area as a helpful starting point
         st.write("---")
         recent_manager.display_recent_bookings_section(location="main")
-    else:
-        # Also show recent bookings below the booking details when a booking is loaded
-        st.write("---")
-        # st.write("### Other Recent Bookings")
-        recent_manager.display_recent_bookings_section(location="main_bottom")
+    
 
 if __name__ == "__main__":
     main()
