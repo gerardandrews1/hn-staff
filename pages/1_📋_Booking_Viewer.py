@@ -27,7 +27,8 @@ def write_links_box():
         links_expander = st.expander("Links", expanded=False)
         with links_expander:
             st.markdown(f"[Niseko Wine and Dine link]({wine_dine_link})")
-            st.markdown(f"[Rhythm referral link]({rhythm_referral_link})")
+            st.markdown(f"[Rhythm Rentals Referral link]({rhythm_referral_link})")
+            st.markdown(f"[Explore/Core Transfers-Lessons-Activities Referral link](https://book.explore-niseko.com/public/booking/order02.jsf?mv=1&vs=explore&i18n=en&i18n=en&segment=HolidayNiseko)")
             st.markdown(f"[Guest Service Guide link]({gsg_link})")
 
 def apply_custom_styles():
