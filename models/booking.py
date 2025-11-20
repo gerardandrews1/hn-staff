@@ -169,17 +169,24 @@ class Booking:
     
     def _determine_management_company(self):
         """Determine which company manages the property using property_utils"""
-        from utils.property_utils import get_prop_management, match_property_management
-        
-        # Get property management dictionary
-        property_management = get_prop_management()
-        
-        # Match property to management company
-        self.managed_by = match_property_management(self.vendor, property_management)
-        
-        # If no match found, use a default message
-        if self.managed_by == "None":
-            self.managed_by = "~ not sure, check roomboss"
+        try:
+            from utils.property_utils import get_prop_management, match_property_management
+            
+            # Get property management dictionary
+            property_management = get_prop_management()
+            
+            # Match property to management company
+            self.managed_by = match_property_management(self.vendor, property_management)
+            
+            # If no match found, use a default message
+            if self.managed_by == "None":
+                self.managed_by = "~ not sure, check roomboss"
+        except ImportError:
+            # Fallback if property_utils is not available
+            if "Holiday Niseko" in str(self.vendor):
+                self.managed_by = "Holiday Niseko"
+            else:
+                self.managed_by = "~ not sure, check roomboss"
 
     
     def parse_room_list2(self, room_list):
@@ -334,7 +341,134 @@ class Booking:
             self.booking_source_1 = "OTA"
         
         return (self.booking_source_1, self.booking_source_2)
-        # UI RENDERING METHODS
+    
+    # NEW TOTALS CALCULATION METHODS
+    def calculate_booking_totals(self):
+        """Calculate total sell price from all booking items"""
+        total_sell = 0
+        total_accommodation = 0
+        total_services = 0
+        
+        for booking in self.booking_dict:
+            if booking.get("bookingType") == "ACCOMMODATION":
+                for item in booking.get("items", []):
+                    price_sell = item.get("priceSell", 0)
+                    total_sell += price_sell
+                    total_accommodation += price_sell
+            elif booking.get("bookingType") == "SERVICE":
+                for item in booking.get("items", []):
+                    price_retail = item.get("priceRetail", 0)
+                    total_sell += price_retail
+                    total_services += price_retail
+        
+        return {
+            'total_sell': total_sell,
+            'total_accommodation': total_accommodation, 
+            'total_services': total_services
+        }
+    
+    def calculate_payment_totals(self):
+        """Calculate totals from invoice payments"""
+        total_invoiced = 0
+        total_paid = 0
+        
+        if self.pay_inv_dict:
+            for invoice in self.pay_inv_dict:
+                total_invoiced += invoice.get("invoiceAmount", 0)
+                total_paid += invoice.get("paymentAmount", 0)
+        
+        return {
+            'total_invoiced': total_invoiced,
+            'total_paid': total_paid,
+            'balance_due': total_invoiced - total_paid
+        }
+
+    def write_booking_totals(self):
+        """Display booking totals summary"""
+        totals = self.calculate_booking_totals()
+        
+        # Create a summary box
+        st.markdown("""
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+            <h4 style="margin-top: 0; color: #495057;">📊 Booking Summary</h4>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric(
+                label="Total Booking Value", 
+                value=f"¥{totals['total_sell']:,.0f}"
+            )
+        
+        with col2:
+            if totals['total_accommodation'] > 0:
+                st.metric(
+                    label="Accommodation", 
+                    value=f"¥{totals['total_accommodation']:,.0f}"
+                )
+        
+        with col3:
+            if totals['total_services'] > 0:
+                st.metric(
+                    label="Services", 
+                    value=f"¥{totals['total_services']:,.0f}"
+                )
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    def write_payment_totals(self):
+        """Display payment totals summary"""
+        payment_totals = self.calculate_payment_totals()
+        
+        # Create payment summary box
+        st.markdown("""
+        <div style="background-color: #e8f5e8; border: 1px solid #c3e6c3; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+            <h4 style="margin-top: 0; color: #2d5a2d;">💰 Payment Summary</h4>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric(
+                label="Total Invoiced", 
+                value=f"¥{payment_totals['total_invoiced']:,.0f}"
+            )
+        
+        with col2:
+            st.metric(
+                label="Total Paid", 
+                value=f"¥{payment_totals['total_paid']:,.0f}",
+                delta=f"¥{payment_totals['total_paid']:,.0f}" if payment_totals['total_paid'] > 0 else None
+            )
+        
+        with col3:
+            balance_due = payment_totals['balance_due']
+            if balance_due > 0:
+                st.metric(
+                    label="Balance Due", 
+                    value=f"¥{balance_due:,.0f}",
+                    delta=f"-¥{balance_due:,.0f}",
+                    delta_color="inverse"
+                )
+            elif balance_due == 0:
+                st.metric(
+                    label="Balance Due", 
+                    value="¥0",
+                    delta="Paid in Full",
+                    delta_color="normal"
+                )
+            else:
+                st.metric(
+                    label="Overpaid", 
+                    value=f"¥{abs(balance_due):,.0f}",
+                    delta=f"+¥{abs(balance_due):,.0f}",
+                    delta_color="normal"
+                )
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+    # UI RENDERING METHODS
     
     def write_key_booking_info(self):
         """Display key booking information"""
@@ -342,7 +476,6 @@ class Booking:
         st.markdown(f"###### {self.full_name}")
         st.write(f"Created - {self.created_date} ")
 
-        # Display booking source right after creation date
         # Display booking source right after creation date with color coding
         if hasattr(self, 'booking_source_1') and self.booking_source_1 != "Unknown":
             # Define color mapping for different booking sources
@@ -390,9 +523,6 @@ class Booking:
             st.write(f"**:green[Booking is Active]**")
         else:
             st.write(f":red[Booking is Cancelled]")
-
-
-        
         
         # Display RoomBoss link
         st.markdown(f"[Open #{self.eId} in RoomBoss]({self.rboss_launch})")
@@ -401,7 +531,6 @@ class Booking:
         if self.guest_phone:
             st.write(f":telephone_receiver:", self.guest_phone)
         
-        # Display email and payment links if not from booking.com
         # Display email and payment links if not from booking.com
         try:
             if self.guest_email and "booking.com" not in self.guest_email:
@@ -426,8 +555,9 @@ class Booking:
 
     
     def write_payment_df(self):
-        """Display payment information table"""
-        # st.markdown("###### Invoices and Payments")
+        """Display payment information table with combined booking and payment totals above"""
+        # Display combined totals first
+        self.write_combined_financial_totals()
         
         if self.pay_inv_dict:
             # Format dates
@@ -452,6 +582,65 @@ class Booking:
                 .to_html(), 
                 unsafe_allow_html=True
             )
+    
+    def write_combined_financial_totals(self):
+        """Display combined booking and payment totals side by side"""
+        booking_totals = self.calculate_booking_totals()
+        payment_totals = self.calculate_payment_totals()
+        
+        # Create combined financial summary box
+        # st.markdown("""
+        # <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+        #     <h4 style="margin-top: 0; color: #495057;">💰 Financial Summary</h4>
+        # """, unsafe_allow_html=True)
+        
+        # Three columns for Cost, Invoiced, Received
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric(
+                label="Cost", 
+                value=f"¥{booking_totals['total_sell']:,.0f}",
+                help="Total booking value (accommodation + services)"
+            )
+        
+        with col2:
+            st.metric(
+                label="Invoiced", 
+                value=f"¥{payment_totals['total_invoiced']:,.0f}",
+                help="Total amount invoiced to guest"
+            )
+        
+        with col3:
+            st.metric(
+                label="Received", 
+                value=f"¥{payment_totals['total_paid']:,.0f}",
+                help="Total payments received from guest"
+            )
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Check for pricing discrepancy - TOTAL COST vs TOTAL INVOICED
+        total_cost = booking_totals['total_sell']  # accommodation + services
+        invoiced_amount = payment_totals['total_invoiced']
+        balance_due = payment_totals['balance_due']
+        
+        # PRIORITY 1: Show pricing discrepancy warning if it exists
+        if total_cost != invoiced_amount:
+            discrepancy = invoiced_amount - total_cost
+            if discrepancy > 0:
+                st.warning(f"⚠️ **Pricing Alert**: Invoiced amount is ¥{discrepancy:,.0f} MORE than total cost. Please verify pricing.")
+            else:
+                st.warning(f"⚠️ **Pricing Alert**: Invoiced amount is ¥{abs(discrepancy):,.0f} LESS than total cost. Please verify pricing.")
+        
+        # PRIORITY 2: Only show balance status if pricing is correct
+        else:
+            if balance_due > 0:
+                st.error(f"💸 Outstanding Balance: ¥{balance_due:,.0f}")
+            elif balance_due == 0:
+                st.success("✅ Fully Paid")
+            else:
+                st.info(f"💵 Overpaid: ¥{abs(balance_due):,.0f}")
     
     def _highlight_unpaid(self, s):
         """Style function for highlighting unpaid invoices"""
@@ -652,8 +841,7 @@ class Booking:
         for room in rooms:
             table_html += f'<td>{room[5]}</td>'  # Guests is sixth item
         
-        # Add rates only if managed by Holiday Niseko
-        # if self.managed_by == "Holiday Niseko":
+        # Add rates
         table_html += """
                 </tr>
                 <tr>
@@ -686,8 +874,6 @@ class Booking:
         if self.notes:
             st.markdown(f"###### Notes")
             st.markdown(self.notes)
-
-
 
     def write_cognito(self):
         """
@@ -764,7 +950,6 @@ class Booking:
             'debug': " | ".join(debug_info)
         }
 
-
     def write_days_to_checkin(self):
         """Calculate and display days until check-in or until check-out"""
         try:
@@ -790,8 +975,6 @@ class Booking:
                     st.write(f"Currently staying: {days_after_checkout+1} days until check-out")
         except Exception as e:
             st.error(f"Error calculating check-in days: {str(e)}")
-
-
 
     def write_invoice_sentences(self):
         """Write the invoices, due dates and payment link in a simple format"""
@@ -869,8 +1052,6 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
                     unsafe_allow_html=True)
         except TypeError:
             return
-        
-
 
     def write_alt_gsg_upsell(self):
         """Write template for guest service upsell"""
@@ -1045,8 +1226,6 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
                             unsafe_allow_html=True)
         except (TypeError, AttributeError):
             return
-
-
 
     def write_booking_confirmation(self):
         """Write the booking confirmation with multiple rooms in a single table with columns"""
@@ -1300,7 +1479,6 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
             import traceback
             st.error(traceback.format_exc())
 
-
     def _render_booking_tables(self):
         """Helper method to render booking tables for confirmation"""
         bookings_with_rooms = {}
@@ -1407,8 +1585,7 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
             for room in rooms:
                 table_html += f'<td>{room["guests"]}</td>'
             
-            # Only show rate row if it's Holiday Niseko managed
-            # if self.managed_by == "Holiday Niseko":
+            # Only show rate row
             table_html += """
                     </tr>
                     <tr>
@@ -1457,7 +1634,6 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
             st.write("Full error traceback:")
             st.code(traceback.format_exc())
 
-    # In your Booking class, add this method:
     def get_email_subject(self):
         """Generate email subject line without writing to UI"""
         if hasattr(self, 'accom_checkin') and hasattr(self, 'accom_checkout'):
@@ -1497,8 +1673,7 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
         
         return None
     
-    # REPLACE the ski rental methods in your booking.py with these:
-
+    # SKI RENTAL METHODS
     def parse_ski_rental_bookings(self):
         """Parse ski rental bookings - one email per Rhythm booking"""
         self.ski_rentals = []
@@ -1624,64 +1799,12 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
     """
                 st.markdown(html_content, unsafe_allow_html=True)
 
-
-
-    def _render_ski_rental_table(self, rental):
-        """Render ski rental items in a properly formatted HTML table."""
-        table_html = f"""
-        <style>
-            .ski-rental-table {{
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 14px;
-                margin: 20px 0;
-            }}
-            .ski-rental-table th, .ski-rental-table td {{
-                border: 1px solid #ddd;
-                padding: 10px;
-                text-align: center;
-            }}
-            .ski-rental-table th {{
-                background-color: #f4f4f4;
-                font-weight: bold;
-            }}
-        </style>
-        <table class="ski-rental-table">
-            <thead>
-                <tr>
-                    <th>Equipment</th>
-                    <th>Category</th>
-                    <th>Price</th>
-                </tr>
-            </thead>
-            <tbody>
-        """
-
-        for item in rental['items']:
-            table_html += f"""
-                <tr>
-                    <td>{item['service_name']}</td>
-                    <td>{item['category']}</td>
-                    <td>¥{item['price']:,.0f}</td>
-                </tr>
-            """
-
-        table_html += """
-            </tbody>
-        </table>
-        """
-
-        st.markdown(table_html, unsafe_allow_html=True)
-
-
-
-
     def display_ski_rental_summary(self):
         """Display a summary of ski rentals in the main booking view"""
         # Remove this method entirely - we don't want the details in the left column
         pass
 
-
+    # EXPLORE TRANSFER METHODS
     def parse_explore_transfer_bookings(self):
         """Parse Explore transfer bookings - one email per transfer booking"""
         self.explore_transfers = []
@@ -1922,11 +2045,8 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
         """
         
         return table_html
-    
 
-
-    # Add this method to your Booking class in booking.py
-
+    # COGNITO METHODS
     def create_cognito_link(self):
         """
         Create a pre-filled Cognito Forms check-in link for this booking.
@@ -1970,82 +2090,3 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
         entry += "%7D"  # Closing curly brace
         
         return f"{base_url}?entry={entry}"
-    
-
-    def write_cognito(self):
-        """
-        Display Cognito check-in status with clear visual hierarchy
-        """
-        # Skip if not managed by Holiday Niseko
-        if self.managed_by != "Holiday Niseko":
-            front_desk_manual_link = "https://docs.google.com/document/d/1-R1zBxcY9sBP_ULDc7D0qaResj9OTU2s/r/edit/edit#heading=h.rus25g7i893t"
-            st.markdown(f"**Don't send Holiday Niseko online check-in** [FD MANUAL]({front_desk_manual_link})")
-            return
-        
-        # Get Cognito data
-        df = get_cognito_sheet_data()
-        cognito_entry = get_cognito_info(str(self.eId), df)
-        
-        # Initialize values
-        eId = "-"
-        phone = "-"
-        arv = "-"
-        
-        # Extract data if available
-        try:
-            eId = cognito_entry["HolidayNisekoReservationNumber"].values[0]
-        except Exception:
-            pass
-        
-        try:
-            phone = cognito_entry["Phone"].values[0]
-        except Exception:
-            pass
-        
-        try:
-            arv = cognito_entry["ExpectedArrivalTimeInNiseko"].values[0] + " " + \
-                cognito_entry["ArrivingInNisekoBy"].values[0]
-        except IndexError:
-            pass
-        
-        # Determine completion status
-        is_completed = eId != "-"
-        
-        # Return status data for the expander
-        return {
-            'completed': is_completed,
-            'phone': phone,
-            'arrival_time': arv,
-            'check_in_link': None if is_completed else self.create_cognito_link()
-        }
-    
-    def write_days_to_checkin(self):
-        """Calculate and display days until check-in or until check-out"""
-        try:
-            # Convert to dates (not datetime) for cleaner day calculations
-            date_checkin = pd.to_datetime(self.accom_checkin).date()
-            date_checkout = pd.to_datetime(self.accom_checkout).date()
-            today = datetime.datetime.now().date()
-            
-            days_to_checkin = (date_checkin - today).days
-            days_to_checkout = (date_checkout - today).days
-
-            # Future check-in
-            if days_to_checkin > 0:
-                st.write(f"{days_to_checkin} days until check-in")
-            
-            # Check-in is today
-            elif days_to_checkin == 0:
-                st.write("Check-in is today")
-            
-            # Already checked in - currently staying
-            elif days_to_checkout >= 0:
-                st.write(f"Currently staying: {days_to_checkout} days until check-out")
-            
-            # Already checked out
-            else:
-                st.write(f"Checked out {abs(days_to_checkout)} days ago")
-                
-        except Exception as e:
-            st.error(f"Error calculating check-in days: {str(e)}")
-            

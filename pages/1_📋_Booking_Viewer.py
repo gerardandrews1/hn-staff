@@ -169,6 +169,26 @@ def apply_custom_styles():
         .source-jalan { background-color: #FF0000; }
         .source-bookpay { background-color: #00A699; }
         .source-staff { background-color: #6B5B95; }
+        
+        /* Debug section styling */
+        .debug-section {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        
+        .debug-json {
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: #ffffff;
+            border: 1px solid #e9ecef;
+            border-radius: 3px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
         </style>
         """, 
         unsafe_allow_html=True
@@ -256,10 +276,46 @@ def fetch_booking_data(booking_id):
         st.error(f"Error: {str(e)}")
         return None
 
+def display_json_debug(booking):
+    """Display JSON response in a debug section"""
+    with st.expander("🔍 Debug: Raw JSON Response", expanded=False):
+        # Tab for different views of the JSON
+        json_tab1, json_tab2, json_tab3 = st.tabs(["Pretty JSON", "Raw Text", "Key Structure"])
+        
+        with json_tab1:
+            st.json(booking.json_response)
+        
+        with json_tab2:
+            st.text_area(
+                "Raw JSON Response", 
+                value=json.dumps(booking.json_response, indent=2), 
+                height=400,
+                help="Raw JSON response from the API"
+            )
+        
+        with json_tab3:
+            # Show the structure of the JSON
+            st.write("**Main Keys:**")
+            if isinstance(booking.json_response, dict):
+                for key, value in booking.json_response.items():
+                    if isinstance(value, dict):
+                        st.write(f"- **{key}** (dict with {len(value)} keys)")
+                        for subkey in list(value.keys())[:5]:  # Show first 5 subkeys
+                            st.write(f"  - {subkey}")
+                        if len(value) > 5:
+                            st.write(f"  - ... and {len(value) - 5} more")
+                    elif isinstance(value, list):
+                        st.write(f"- **{key}** (list with {len(value)} items)")
+                    else:
+                        st.write(f"- **{key}**: {type(value).__name__}")
+
 def display_booking_details(booking):
     """Display booking details in a three-column layout with better spacing"""
     # Process room data first without displaying (just to set variables)
     process_room_data(booking)
+
+    # Add JSON debug section at the top
+    display_json_debug(booking)
 
     # Initialize cognito_data to None
     cognito_data = None
