@@ -343,7 +343,7 @@ def display_booking_details(booking):
             # Room information
             booking.write_room_info(booking.room_list_todf)  
     
-    # Display invoices, cognito, and emails in right column
+    # Display invoices, cognito, arrival/departure, and emails in right column
     with right_col:
         # Invoices container
         with st.expander(label="Invoices & Payments", expanded=True):
@@ -396,6 +396,9 @@ def display_booking_details(booking):
             # Not Holiday Niseko managed - simple info message
             front_desk_manual_link = "https://docs.google.com/document/d/1-R1zBxcY9sBP_ULDc7D0qaResj9OTU2s/r/edit/edit#heading=h.rus25g7i893t"
             st.info(f"Not managed by Holiday Niseko - [check Front Desk Manual]({front_desk_manual_link})")
+        
+        # NEW: arrival / departure / method box directly under check-in section
+        booking.write_arrival_departure_info()
         
         st.write("")
         
@@ -530,7 +533,6 @@ def main():
         if not st.session_state.recent_bookings:
             st.info("No bookings searched")
         else:
-            # st.write("Click to view a recent booking:")
             for idx, item in enumerate(st.session_state.recent_bookings):
                 # Handle different tuple formats
                 if isinstance(item, tuple):
@@ -568,18 +570,15 @@ def main():
                 # Add a small spacer between buttons
                 st.write("")
 
-    # Add the API-based recent bookings section to sidebar - REMOVED
-    # add_recent_bookings_to_sidebar()
-
     with st.sidebar:
         write_links_box()
     
     # If a search was executed (booking ID entered)
-    if booking_id:  # Remove the .strip() check to always process any input
+    if booking_id:
         # Clean the booking ID (remove any whitespace)
         clean_booking_id = booking_id.strip()
 
-        if clean_booking_id:  # Only proceed if there's something after stripping
+        if clean_booking_id:
             # Extract just the IDs from the list of tuples for comparison (stripping each ID)
             existing_ids = [id.strip() for id, _, _ in st.session_state.recent_bookings]
             

@@ -6,7 +6,6 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any, Union
 
@@ -187,7 +186,6 @@ class Booking:
                 self.managed_by = "Holiday Niseko"
             else:
                 self.managed_by = "~ not sure, check roomboss"
-
     
     def parse_room_list2(self, room_list):
         """
@@ -197,6 +195,11 @@ class Booking:
         rooms_list_todf = []
         self.booking_accom_total = 0
         self.guests = 0
+        
+        # Initialize arrival/departure time tracking
+        arrival_times = []
+        departure_times = []
+        room_notes = []
         
         # Loop through each room and extract details
         for room in room_list:
@@ -228,6 +231,27 @@ class Booking:
             price_retail = room.get("priceSell", {})
             curr_room_list.append(f"¥{price_retail:,.0f}")
             
+            # Parse arrival and departure times
+            arrival_time = room.get("arrivalTime", "")
+            departure_time = room.get("departureTime", "")
+            
+            # Clean up times (convert "--:--" to empty string)
+            if arrival_time == "--:--":
+                arrival_time = ""
+            if departure_time == "--:--":
+                departure_time = ""
+                
+            # Store times for later use
+            if arrival_time:
+                arrival_times.append(arrival_time)
+            if departure_time:
+                departure_times.append(departure_time)
+            
+            # Parse room notes
+            room_note = room.get("roomNote", "")
+            if room_note and room_note.strip():
+                room_notes.append(room_note.strip())
+            
             # Add to the master list
             rooms_list_todf.append(curr_room_list)
             
@@ -236,6 +260,16 @@ class Booking:
         
         # Set the total for the booking
         self.accom_total = self.booking_accom_total
+        
+        # Store arrival/departure times as booking attributes
+        self.arrival_times = arrival_times if arrival_times else []
+        self.departure_times = departure_times if departure_times else []
+        self.room_notes = room_notes if room_notes else []
+        
+        # Set a single arrival/departure time if available (use first one found)
+        self.arrival_time = arrival_times[0] if arrival_times else ""
+        self.departure_time = departure_times[0] if departure_times else ""
+        self.room_note = room_notes[0] if room_notes else ""
         
         return rooms_list_todf
     
@@ -510,6 +544,8 @@ class Booking:
                 f'</div>',
                 unsafe_allow_html=True
             )
+        
+        # Separator after header + source
         st.write("---")
         
         # Display management company
@@ -553,7 +589,6 @@ class Booking:
         except TypeError:
             st.write(self.guest_email)
 
-    
     def write_payment_df(self):
         """Display payment information table with combined booking and payment totals above"""
         # Display combined totals first
@@ -587,12 +622,6 @@ class Booking:
         """Display combined booking and payment totals side by side"""
         booking_totals = self.calculate_booking_totals()
         payment_totals = self.calculate_payment_totals()
-        
-        # Create combined financial summary box
-        # st.markdown("""
-        # <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
-        #     <h4 style="margin-top: 0; color: #495057;">💰 Financial Summary</h4>
-        # """, unsafe_allow_html=True)
         
         # Three columns for Cost, Invoiced, Received
         col1, col2, col3 = st.columns(3)
@@ -644,15 +673,11 @@ class Booking:
     
     def _highlight_unpaid(self, s):
         """Style function for highlighting unpaid invoices"""
-        # For non-managed unpaid
-        if (s["Paid"] == 0) and (self.managed_by == "Non Managed") and (s.Invoiced > 0):
-            return ['background-color: #ffb09c'] * len(s)
+        # For unpaid invoices - use consistent red background color
+        if (s["Paid"] == 0) and (s["Invoiced"] > 0):
+            return ['background-color: #fee2e2'] * len(s)
         
-        # HN Managed not paid
-        elif (s["Paid"] == 0) and (self.booking_source_1 != "OTA") and (s.Invoiced > 0):
-            return ['background-color: #ffead5'] * len(s)    
-        
-        # Paid
+        # Paid invoices
         else:
             return ['background-color: white'] * len(s)
     
@@ -1184,7 +1209,7 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
 
                 On MyBooking, you can: 
                 - View door codes and check-in instructions
-                - Book guest services (airport transfers, lift tickets, etc) - Popular services book quickly
+                - Book guest services (airport transfers, lift tickets, ski rentals, and more) - Popular services book quickly
                 - Complete online check-in 
 
                 Questions? Contact us anytime. 
@@ -1505,7 +1530,7 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
                         'room_name': room.get('roomType', {}).get('roomTypeName', ''),
                         'check_in': pd.to_datetime(room.get('checkIn', '')).strftime('%b %d, %Y'),
                         'check_out': pd.to_datetime(room.get('checkOut', '')).strftime('%b %d, %Y'),
-                        'nights': (pd.to_datetime(room.get('checkOut', '')) - pd.to_datetime(room.get('checkIn', ''))).days,
+                        'nights': (pd.to_datetime(room.get('CheckOut', '')) - pd.to_datetime(room.get('CheckIn', ''))).days if room.get('CheckOut') and room.get('CheckIn') else (pd.to_datetime(room.get('checkOut', '')) - pd.to_datetime(room.get('checkIn', ''))).days,
                         'guests': room.get('numberGuests', 0),
                         'rate': f"¥{room.get('priceSell', 0):,.0f}"
                     })
@@ -2047,6 +2072,23 @@ Check out our <a href='{self.service_guide}'> Guest Services Guide</a> for full 
         return table_html
 
     # COGNITO METHODS
+    def write_arrival_departure_info(self):
+        """Display arrival and departure time information"""
+        # Display arrival and departure times (always show this section)
+        if hasattr(self, 'arrival_time') and hasattr(self, 'departure_time'):
+            arrival_display = self.arrival_time if self.arrival_time else "Not specified"
+            departure_display = self.departure_time if self.departure_time else "Not specified"
+            
+            # Create a message for the info box
+            message = f"🕐 **Arrival:** {arrival_display}\n\n🕐 **Departure:** {departure_display}"
+            
+            # Add room note if available (contains arrival/departure method info)
+            if hasattr(self, 'room_note') and self.room_note:
+                message += f"\n\n📝 **Method:** {self.room_note}"
+            
+            # Display in an info box
+            st.info(message)
+
     def create_cognito_link(self):
         """
         Create a pre-filled Cognito Forms check-in link for this booking.

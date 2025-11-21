@@ -201,6 +201,7 @@ def build_css_table(eId, phone, arv_time, cognito_done):
 def highlight_unpaid(s):
     """
     Style function for highlighting unpaid invoices in DataFrames.
+    Updated to use consistent red warning color.
     
     Args:
         s: DataFrame row
@@ -208,16 +209,14 @@ def highlight_unpaid(s):
     Returns:
         List of CSS styles for each cell in the row
     """
-    # For non-managed not paid
-    if (s["Paid"] == 0) and (s.Invoiced > 0):
-        if hasattr(s, "managed_by") and s.managed_by != "Holiday Niseko":
-            return ['background-color: #ffb09c'] * len(s)
-        # HN Managed not paid
-        elif hasattr(s, "booking_source_1") and s.booking_source_1 != "OTA" and (s.Invoiced > 0):
-            return ['background-color: #ffead5'] * len(s)    
+    # For unpaid invoices - use consistent red warning color matching the updated system
+    if (s["Paid"] == 0) and (s["Invoiced"] > 0):
+        # Using red color that matches Streamlit error/warning styling with stronger visual impact
+        return ['background-color: #fee2e2; border-left: 4px solid #dc2626; color: #7f1d1d; font-weight: 500'] * len(s)
     
-    # Paid or other cases
-    return ['background-color: white'] * len(s)
+    # Paid invoices - clean white background
+    else:
+        return ['background-color: white; color: #374151'] * len(s)
 
 def format_currency(amount, currency="¥"):
     """Format a number as currency with thousands separators"""
